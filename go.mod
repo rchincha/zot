@@ -36,3 +36,5 @@ require (
 	gopkg.in/resty.v1 v1.12.0
 	honnef.co/go/tools v0.0.0-20190102054323-c2f93a96b099
 )
+
+replace gopkg.in/asn1-ber.v1 => github.com/go-asn1-ber/asn1-ber v1.3.2-0.20191121212151-29be175fc3a3
