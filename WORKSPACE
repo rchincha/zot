@@ -1,4 +1,4 @@
-workspace(name = "com_github_anuvu_zot")
+workspace(name = "com_github_rchincha_zot")
 
 go_version = "1.12.9"
 

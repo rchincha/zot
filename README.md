@@ -1,4 +1,4 @@
-# zot [![Build Status](https://travis-ci.org/anuvu/zot.svg?branch=master)](https://travis-ci.org/anuvu/zot) [![codecov.io](http://codecov.io/github/anuvu/zot/coverage.svg?branch=master)](http://codecov.io/github/anuvu/zot?branch=master)
+# zot [![Build Status](https://travis-ci.org/rchincha/zot.svg?branch=master)](https://travis-ci.org/rchincha/zot) [![codecov.io](http://codecov.io/github/rchincha/zot/coverage.svg?branch=master)](http://codecov.io/github/rchincha/zot?branch=master)
 
 **zot** is a vendor-neutral OCI image repository server purely based on 
 [OCI Distribution Specification](https://github.com/opencontainers/distribution-spec).
@@ -24,7 +24,7 @@
 make binary-container
 ```
 
-* Alternatively, build inside a container using [stacker](https://github.com/anuvu/stacker) (preferred)
+* Alternatively, build inside a container using [stacker](https://github.com/rchincha/stacker) (preferred)
 
 ```
 make binary-stacker
@@ -59,11 +59,11 @@ bin/zot compliance -H hostIP -P port [-V "all"]
 [skopeo](https://github.com/containers/skopeo) is a tool to work with remote
 image repositories.
 
-We have a [patched version](https://github.com/anuvu/skopeo) available that
+We have a [patched version](https://github.com/rchincha/skopeo) available that
 works with _zot_.
 
 ```
-git clone https://github.com/anuvu/skopeo
+git clone https://github.com/rchincha/skopeo
 
 cd skopeo
 
@@ -75,7 +75,7 @@ make GO111MODULE=on binary-local
 [cri-o](https://github.com/cri-o/cri-o) is a OCI-based Kubernetes container
 runtime interface.
 
-We have a [patched version](https://github.com/anuvu/image) of containers/image
+We have a [patched version](https://github.com/rchincha/image) of containers/image
 available that works with _zot_ which must be linked with cri-o.
 
 ```
@@ -83,7 +83,7 @@ git clone https://github.com/cri-o/cri-o
 
 cd cri-o
 
-echo 'replace github.com/containers/image => github.com/anuvu/image v1.5.2-0.20190827234748-f71edca6153a' >> go.mod
+echo 'replace github.com/containers/image => github.com/rchincha/image v1.5.2-0.20190827234748-f71edca6153a' >> go.mod
 
 make bin/crio crio.conf GO111MODULE=on
 

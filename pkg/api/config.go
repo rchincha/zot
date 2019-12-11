@@ -1,8 +1,8 @@
 package api
 
 import (
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/log"
+	"github.com/rchincha/zot/errors"
+	"github.com/rchincha/zot/pkg/log"
 	"github.com/getlantern/deepcopy"
 	dspec "github.com/opencontainers/distribution-spec"
 )

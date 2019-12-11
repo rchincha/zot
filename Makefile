@@ -10,11 +10,11 @@ all: doc binary debug test check
 
 .PHONY: binary
 binary: doc
-	go build -v -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot -tags=jsoniter ./cmd/zot
+	go build -v -ldflags "-X  github.com/rchincha/zot/pkg/api.Commit=${COMMIT}" -o bin/zot -tags=jsoniter ./cmd/zot
 
 .PHONY: debug
 debug: doc
-	go build -v -gcflags all='-N -l' -ldflags "-X  github.com/anuvu/zot/pkg/api.Commit=${COMMIT}" -o bin/zot-debug -tags=jsoniter ./cmd/zot
+	go build -v -gcflags all='-N -l' -ldflags "-X  github.com/rchincha/zot/pkg/api.Commit=${COMMIT}" -o bin/zot-debug -tags=jsoniter ./cmd/zot
 
 .PHONY: test
 test:
@@ -44,7 +44,7 @@ run: binary test
 .PHONY: binary-container
 binary-container:
 	${CONTAINER_RUNTIME} build ${BUILD_ARGS} -f Dockerfile -t zot:latest .
-	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd):/go/src/github.com/anuvu/zot \
+	${CONTAINER_RUNTIME} run --rm --security-opt label=disable -v $$(pwd):/go/src/github.com/rchincha/zot \
 		zot:latest make
 
 .PHONY: binary-stacker

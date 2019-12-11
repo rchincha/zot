@@ -1,6 +1,6 @@
 package api
 
-import "github.com/anuvu/zot/errors"
+import "github.com/rchincha/zot/errors"
 
 type Error struct {
 	Code        ErrorCode   `json:"code"`

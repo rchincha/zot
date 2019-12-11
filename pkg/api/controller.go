@@ -8,9 +8,9 @@ import (
 	"net"
 	"net/http"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/log"
-	"github.com/anuvu/zot/pkg/storage"
+	"github.com/rchincha/zot/errors"
+	"github.com/rchincha/zot/pkg/log"
+	"github.com/rchincha/zot/pkg/storage"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 )

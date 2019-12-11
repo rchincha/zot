@@ -3,17 +3,17 @@ package cli
 import (
 	"testing"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/compliance"
-	"github.com/anuvu/zot/pkg/storage"
+	"github.com/rchincha/zot/errors"
+	"github.com/rchincha/zot/pkg/api"
+	"github.com/rchincha/zot/pkg/compliance"
+	"github.com/rchincha/zot/pkg/storage"
 	"github.com/mitchellh/mapstructure"
 	dspec "github.com/opencontainers/distribution-spec"
 	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
-	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
+	"github.com/rchincha/zot/pkg/compliance/v1_0_0"
 )
 
 // metadataConfig reports metadata after parsing, which we use to track

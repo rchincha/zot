@@ -21,7 +21,7 @@ gazelle(
     external = "external",
     extra_args = ["-exclude=vendor"],
     gazelle = "@bazel_gazelle//cmd/gazelle:gazelle_pure",
-    prefix = "github.com/anuvu/zot",
+    prefix = "github.com/rchincha/zot",
 )
 
 gazelle(
@@ -31,7 +31,7 @@ gazelle(
     external = "external",
     extra_args = ["-exclude=vendor"],
     gazelle = "@bazel_gazelle//cmd/gazelle:gazelle_pure",
-    prefix = "github.com/anuvu/zot",
+    prefix = "github.com/rchincha/zot",
 )
 
 buildifier(
@@ -64,7 +64,7 @@ goimports(
     exclude_paths = [
         "./vendor/*",
     ],
-    prefix = "github.com/anuvu/zot",
+    prefix = "github.com/rchincha/zot",
     write = True,
 )
 
@@ -74,7 +74,7 @@ golangcilint(
     paths = [
         "./...",
     ],
-    prefix = "github.com/anuvu/zot",
+    prefix = "github.com/rchincha/zot",
 )
 
 nogo(
@@ -87,7 +87,7 @@ nogo(
 go_library(
     name = "go_default_library",
     srcs = ["zot.go"],
-    importpath = "github.com/anuvu/zot",
+    importpath = "github.com/rchincha/zot",
     visibility = ["//visibility:public"],
 )
 

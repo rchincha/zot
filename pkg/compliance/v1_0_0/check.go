@@ -7,8 +7,8 @@ import (
 	"fmt"
 	"testing"
 
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/compliance"
+	"github.com/rchincha/zot/pkg/api"
+	"github.com/rchincha/zot/pkg/compliance"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	. "github.com/smartystreets/goconvey/convey"

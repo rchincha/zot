@@ -3,8 +3,8 @@ package main_test
 import (
 	"testing"
 
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/cli"
+	"github.com/rchincha/zot/pkg/api"
+	"github.com/rchincha/zot/pkg/cli"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

@@ -6,8 +6,8 @@ import (
 	"fmt"
 	"time"
 
-	"github.com/anuvu/zot/errors"
-	"github.com/anuvu/zot/pkg/log"
+	"github.com/rchincha/zot/errors"
+	"github.com/rchincha/zot/pkg/log"
 	"github.com/jtblin/go-ldap-client"
 	goldap "gopkg.in/ldap.v2"
 )

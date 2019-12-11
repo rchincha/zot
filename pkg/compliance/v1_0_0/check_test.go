@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anuvu/zot/pkg/api"
-	"github.com/anuvu/zot/pkg/compliance"
-	"github.com/anuvu/zot/pkg/compliance/v1_0_0"
+	"github.com/rchincha/zot/pkg/api"
+	"github.com/rchincha/zot/pkg/compliance"
+	"github.com/rchincha/zot/pkg/compliance/v1_0_0"
 	"gopkg.in/resty.v1"
 )
 

@@ -11,7 +11,7 @@ go_library(
         "regexp.go",
         "routes.go",
     ],
-    importpath = "github.com/anuvu/zot/pkg/api",
+    importpath = "github.com/rchincha/zot/pkg/api",
     visibility = ["//visibility:public"],
     deps = [
         "//docs:go_default_library",

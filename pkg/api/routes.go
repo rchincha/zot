@@ -20,8 +20,8 @@ import (
 	"strconv"
 	"strings"
 
-	_ "github.com/anuvu/zot/docs" // nolint (golint) - as required by swaggo
-	"github.com/anuvu/zot/errors"
+	_ "github.com/rchincha/zot/docs" // nolint (golint) - as required by swaggo
+	"github.com/rchincha/zot/errors"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"

@@ -5,7 +5,7 @@ import (
 	"os"
 	"testing"
 
-	"github.com/anuvu/zot/pkg/cli"
+	"github.com/rchincha/zot/pkg/cli"
 	. "github.com/smartystreets/goconvey/convey"
 )
 

@@ -9,8 +9,8 @@ import (
 	"path/filepath"
 	"sync"
 
-	"github.com/anuvu/zot/errors"
-	zlog "github.com/anuvu/zot/pkg/log"
+	"github.com/rchincha/zot/errors"
+	zlog "github.com/rchincha/zot/pkg/log"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"

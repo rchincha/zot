@@ -13,7 +13,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/anuvu/zot/pkg/api"
+	"github.com/rchincha/zot/pkg/api"
 	vldap "github.com/nmcclain/ldap"
 	. "github.com/smartystreets/goconvey/convey"
 	"gopkg.in/resty.v1"

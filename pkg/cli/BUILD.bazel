@@ -3,7 +3,7 @@ load("@io_bazel_rules_go//go:def.bzl", "go_library", "go_test")
 go_library(
     name = "go_default_library",
     srcs = ["root.go"],
-    importpath = "github.com/anuvu/zot/pkg/cli",
+    importpath = "github.com/rchincha/zot/pkg/cli",
     visibility = ["//visibility:public"],
     deps = [
         "//errors:go_default_library",

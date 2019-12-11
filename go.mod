@@ -24,7 +24,7 @@ require (
 	github.com/swaggo/http-swagger v0.0.0-20190614090009-c2865af9083e
 	github.com/swaggo/swag v1.6.3
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
-	gopkg.in/asn1-ber.v1 v1.0.0-00010101000000-000000000000 // indirect
+	gopkg.in/asn1-ber.v1 v1.3.1 // indirect
 	gopkg.in/ldap.v2 v2.5.1
 	gopkg.in/resty.v1 v1.12.0
 )

@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/anuvu/zot/errors"
+	"github.com/rchincha/zot/errors"
 	"github.com/gorilla/mux"
 	"github.com/jtblin/go-ldap-client"
 	"golang.org/x/crypto/bcrypt"
