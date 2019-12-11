@@ -1,4 +1,4 @@
-module github.com/rchincha/zot
+module github.com/anuvu/zot
 
 go 1.12
 
@@ -35,3 +35,5 @@ require (
 	gopkg.in/ldap.v2 v2.5.1
 	gopkg.in/resty.v1 v1.12.0
 )
+
+replace gopkg.in/asn1-ber.v1 => github.com/go-asn1-ber/asn1-ber v1.3.1
