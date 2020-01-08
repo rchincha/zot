@@ -59,11 +59,12 @@ type LogConfig struct {
 }
 
 type Config struct {
-	Version string
-	Commit  string
-	Storage StorageConfig
-	HTTP    HTTPConfig
-	Log     *LogConfig
+	Version      string
+	Commit       string
+	Storage      StorageConfig
+	HTTP         HTTPConfig
+	Log          *LogConfig
+	Experimental bool
 }
 
 func NewConfig() *Config {

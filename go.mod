@@ -3,6 +3,7 @@ module github.com/anuvu/zot
 go 1.13
 
 require (
+	github.com/99designs/gqlgen v0.10.2
 	github.com/alecthomas/template v0.0.0-20190718012654-fb15b899a751
 	github.com/getlantern/deepcopy v0.0.0-20160317154340-7f45deb8130a
 	github.com/go-chi/chi v4.0.2+incompatible // indirect
@@ -24,6 +25,7 @@ require (
 	github.com/spf13/viper v1.6.1
 	github.com/swaggo/http-swagger v0.0.0-20190614090009-c2865af9083e
 	github.com/swaggo/swag v1.6.3
+	github.com/vektah/gqlparser v1.2.1
 	golang.org/x/crypto v0.0.0-20191206172530-e9b2fee46413
 	gopkg.in/resty.v1 v1.12.0
 )

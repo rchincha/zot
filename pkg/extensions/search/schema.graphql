@@ -1,0 +1,10 @@
+type Query {
+  repositories(name: String): [Repository]
+  search(text: String!): [SearchResult!]!
+}
+
+type Repository {
+  name: String!
+}
+
+union SearchResult = Repository

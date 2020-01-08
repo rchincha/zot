@@ -33,10 +33,13 @@ func (c *Controller) Run() error {
 		c.Log.Error().Err(err).Msg("configuration validation failed")
 		return err
 	}
-
 	// print the current configuration, but strip secrets
 	c.Log.Info().Interface("params", c.Config.Sanitize()).Msg("configuration settings")
 
+	// setup image store
+	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Log)
+
+	// setup http handling
 	engine := mux.NewRouter()
 	engine.Use(log.SessionLogger(c.Log), handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 		handlers.PrintRecoveryStack(false)))
@@ -44,8 +47,6 @@ func (c *Controller) Run() error {
 	c.Router = engine
 	c.Router.UseEncodedPath()
 	_ = NewRouteHandler(c)
-
-	c.ImageStore = storage.NewImageStore(c.Config.Storage.RootDirectory, c.Log)
 
 	addr := fmt.Sprintf("%s:%s", c.Config.HTTP.Address, c.Config.HTTP.Port)
 	server := &http.Server{Addr: addr, Handler: c.Router}

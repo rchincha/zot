@@ -20,8 +20,10 @@ import (
 	"strconv"
 	"strings"
 
+	gqlHandler "github.com/99designs/gqlgen/handler"
 	_ "github.com/anuvu/zot/docs" // nolint (golint) - as required by swaggo
 	"github.com/anuvu/zot/errors"
+	"github.com/anuvu/zot/pkg/extensions/search"
 	"github.com/anuvu/zot/pkg/log"
 	"github.com/gorilla/mux"
 	jsoniter "github.com/json-iterator/go"
@@ -80,6 +82,9 @@ func (rh *RouteHandler) SetupRoutes() {
 			rh.DeleteBlobUpload).Methods("DELETE")
 		g.HandleFunc("/_catalog",
 			rh.ListRepositories).Methods("GET")
+		if true /*rh.c.Config.Experimental*/ {
+			g.HandleFunc("/query", gqlHandler.GraphQL(search.NewExecutableSchema(search.Config{Resolvers: &search.Resolver{ImageStore: rh.c.ImageStore, Log: rh.c.Log}})))
+		}
 		g.HandleFunc("/",
 			rh.CheckVersionSupport).Methods("GET")
 	}
