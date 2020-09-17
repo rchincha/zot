@@ -16,6 +16,7 @@ type StorageConfig struct {
 	RootDirectory string
 	GC            bool
 	Dedupe        bool
+	PrivateDir    string //
 }
 
 type TLSConfig struct {
