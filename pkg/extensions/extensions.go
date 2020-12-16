@@ -52,6 +52,9 @@ func EnableExtensions(extension *ExtensionConfig, log log.Logger, rootDir string
 	} else {
 		log.Info().Msg("CVE config not provided, skipping CVE update")
 	}
+
+	if extension.Cache != nil {
+	}
 }
 
 // SetupRoutes ...
