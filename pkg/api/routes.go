@@ -54,6 +54,11 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
+
+	if rh.c.Config.HTTP.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
+		rh.c.Router.Use(AuthzHandler(rh.c))
+	}
+
 	g := rh.c.Router.PathPrefix(RoutePrefix).Subrouter()
 	{
 		g.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", NameRegexp.String()),
@@ -1136,7 +1141,20 @@ func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request)
 		combineRepoList = append(combineRepoList, repos...)
 	}
 
-	is := RepositoryList{Repositories: combineRepoList}
+	var repos []string
+	// get passed context from authzHandler and filter out repos based on permissions
+	if acContext := r.Context().Value(contextKeyID); acContext != nil {
+		aclContext := acContext.(AccessControllerContext)
+		for _, r := range combineRepoList {
+			if contains(aclContext.userAllowedRepos, r) || aclContext.isAdmin {
+				repos = append(repos, r)
+			}
+		}
+	} else {
+		repos = combineRepoList
+	}
+
+	is := RepositoryList{Repositories: repos}
 
 	WriteJSON(w, http.StatusOK, is)
 }

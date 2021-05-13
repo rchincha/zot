@@ -46,6 +46,18 @@ func NewController(config *Config) *Controller {
 	return &controller
 }
 
+func (c *Controller) ReloadAccessControlConfig(config *Config) error {
+	if err := config.Validate(c.Log); err != nil {
+		c.Log.Error().Err(err).Msg("configuration validation failed")
+		return err
+	}
+
+	c.Config.HTTP.AccessControl = config.HTTP.AccessControl
+	c.Log.Info().Msgf("accessControl config changed to: %#v", config.HTTP.AccessControl)
+
+	return nil
+}
+
 func DefaultHeaders() mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

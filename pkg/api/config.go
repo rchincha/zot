@@ -48,6 +48,7 @@ type HTTPConfig struct {
 	Port            string
 	TLS             *TLSConfig
 	Auth            *AuthConfig
+	AccessControl   *AccessControl
 	Realm           string
 	AllowReadAccess bool `mapstructure:",omitempty"`
 	ReadOnly        bool `mapstructure:",omitempty"`
@@ -78,6 +79,30 @@ type GlobalStorageConfig struct {
 	Dedupe        bool
 	GC            bool
 	SubPaths      map[string]StorageConfig
+}
+
+type Repository struct {
+	Name          string
+	Policies      []Policy
+	DefaultPolicy []string
+}
+
+type Repositories map[string]PolicyGroup
+
+type PolicyGroup struct {
+	Policies      []Policy
+	DefaultPolicy []string
+}
+
+type AccessControl struct {
+	Repositories       Repositories `mapstructure:",omitempty"`
+	AdminPolicy        Policy
+	DefaultAdminPolicy []string
+}
+
+type Policy struct {
+	Users   []string
+	Actions []string
 }
 
 type Config struct {

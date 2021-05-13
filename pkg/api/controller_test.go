@@ -39,16 +39,17 @@ import (
 )
 
 const (
-	BaseURL               = "http://127.0.0.1:%s"
-	BaseSecureURL         = "https://127.0.0.1:%s"
-	username              = "test"
-	passphrase            = "test"
-	ServerCert            = "../../test/data/server.cert"
-	ServerKey             = "../../test/data/server.key"
-	CACert                = "../../test/data/ca.crt"
-	AuthorizedNamespace   = "everyone/isallowed"
-	UnauthorizedNamespace = "fortknox/notallowed"
-	ALICE                 = "alice"
+	BaseURL                = "http://127.0.0.1:%s"
+	BaseSecureURL          = "https://127.0.0.1:%s"
+	username               = "test"
+	passphrase             = "test"
+	ServerCert             = "../../test/data/server.cert"
+	ServerKey              = "../../test/data/server.key"
+	CACert                 = "../../test/data/ca.crt"
+	AuthorizedNamespace    = "everyone/isallowed"
+	UnauthorizedNamespace  = "fortknox/notallowed"
+	ALICE                  = "alice"
+	AuthorizationNamespace = "authz/image"
 )
 
 type (
@@ -1637,6 +1638,476 @@ func parseBearerAuthHeader(authHeaderRaw string) *authHeader {
 	}
 
 	return &h
+}
+
+func TestAuthorizationWithBasicAuth(t *testing.T) {
+	Convey("Make a new controller", t, func() {
+		port := getFreePort()
+		baseURL := getBaseURL(port, false)
+
+		config := api.NewConfig()
+		config.HTTP.Port = port
+		htpasswdPath := makeHtpasswdFile()
+		defer os.Remove(htpasswdPath)
+
+		config.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		config.HTTP.AccessControl = &api.AccessControl{
+			Repositories: api.Repositories{
+				AuthorizationNamespace: api.PolicyGroup{
+					Policies: []api.Policy{
+						{
+							Users:   []string{},
+							Actions: []string{},
+						},
+					},
+					DefaultPolicy: []string{},
+				},
+			},
+			AdminPolicy: api.Policy{
+				Users:   []string{},
+				Actions: []string{},
+			},
+			DefaultAdminPolicy: []string{},
+		}
+
+		c := api.NewController(config)
+		dir, err := ioutil.TempDir("", "oci-repo-test")
+		if err != nil {
+			panic(err)
+		}
+		defer os.RemoveAll(dir)
+		err = copyFiles("../../test/data", dir)
+		if err != nil {
+			panic(err)
+		}
+		c.Config.Storage.RootDirectory = dir
+		go func() {
+			// this blocks
+			if err := c.Run(); err != nil {
+				return
+			}
+		}()
+
+		// wait till ready
+		for {
+			_, err := resty.R().Get(baseURL)
+			if err == nil {
+				break
+			}
+			time.Sleep(100 * time.Millisecond)
+		}
+
+		defer func() {
+			ctx := context.Background()
+			_ = c.Server.Shutdown(ctx)
+		}()
+
+		blob := []byte("hello, blob!")
+		digest := godigest.FromBytes(blob).String()
+
+		// everybody should have access to /v2/
+		resp, err := resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// everybody should have access to /v2/_catalog
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/_catalog")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+		var e api.Error
+		err = json.Unmarshal(resp.Body(), &e)
+		So(err, ShouldBeNil)
+
+		// first let's use only repositories based policies
+		// should get 403 without create
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// add test user to repo's policy with create perm
+		c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users =
+			append(c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Users, "test")
+		c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
+			append(c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "create")
+
+		// now it should get 202
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 202)
+		loc := resp.Header().Get("Location")
+
+		// uploading blob should get 201
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		// head blob should get 403 with read perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// get blob should get 403 without read perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// get tags without read access should get 403
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// get tags with read access should get 200
+		c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
+			append(c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "read")
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// head blob should get 200 now
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Head(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// get blob should get 200 now
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// delete blob should get 403 without delete perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// add delete perm on repo
+		c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions =
+			append(c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions, "delete")
+
+		// delete blob should get 202
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 202)
+
+		// get manifest should get 403, we don't have perm at all on this repo
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// add read perm on repo
+		c.Config.HTTP.AccessControl.Repositories["zot-test"] = api.PolicyGroup{Policies: []api.Policy{
+			{
+				[]string{"test"},
+				[]string{"read"},
+			},
+		}, DefaultPolicy: []string{}}
+
+		// get manifest should get 200 now
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/zot-test/manifests/0.0.1")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		manifestBlob := resp.Body()
+
+		// put manifest should get 403 without create perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// add create perm on repo
+		c.Config.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions =
+			append(c.Config.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions, "create")
+
+		// should get 201 with create perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		// update manifest should get 403 without update perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// add update perm on repo
+		c.Config.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions =
+			append(c.Config.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions, "update")
+
+		// update manifest should get 201 with update perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		// now use default repo policy
+		c.Config.HTTP.AccessControl.Repositories["zot-test"].Policies[0].Actions = []string{}
+		repoPolicy := c.Config.HTTP.AccessControl.Repositories["zot-test"]
+		repoPolicy.DefaultPolicy = []string{"update"}
+		c.Config.HTTP.AccessControl.Repositories["zot-test"] = repoPolicy
+
+		// update manifest should get 201 with update perm on repo's default policy
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		// with default read on repo should still get 200
+		c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace].Policies[0].Actions = []string{}
+		repoPolicy = c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace]
+		repoPolicy.DefaultPolicy = []string{"read"}
+		c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// upload blob without user create but with default create should get 200
+		repoPolicy.DefaultPolicy = append(repoPolicy.DefaultPolicy, "create")
+		c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 202)
+
+		//remove per repo policy
+		repoPolicy = c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace]
+		repoPolicy.Policies = []api.Policy{}
+		repoPolicy.DefaultPolicy = []string{}
+		c.Config.HTTP.AccessControl.Repositories[AuthorizationNamespace] = repoPolicy
+
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// let's use admin policy
+		// remove all repo based policy
+		delete(c.Config.HTTP.AccessControl.Repositories, AuthorizationNamespace)
+		delete(c.Config.HTTP.AccessControl.Repositories, "zot-test")
+
+		// whithout any perm should get 403
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// add read perm
+		c.Config.HTTP.AccessControl.AdminPolicy.Users = append(c.Config.HTTP.AccessControl.AdminPolicy.Users, "test")
+		c.Config.HTTP.AccessControl.AdminPolicy.Actions = append(c.Config.HTTP.AccessControl.AdminPolicy.Actions, "read")
+		// with read perm should get 200
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// without create perm should 403
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// add create perm
+		c.Config.HTTP.AccessControl.AdminPolicy.Actions = append(c.Config.HTTP.AccessControl.AdminPolicy.Actions, "create")
+		// with create perm should get 202
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 202)
+		loc = resp.Header().Get("Location")
+
+		// uploading blob should get 201
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		// without delete perm should 403
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// add delete perm
+		c.Config.HTTP.AccessControl.AdminPolicy.Actions = append(c.Config.HTTP.AccessControl.AdminPolicy.Actions, "delete")
+		// with delete perm should get 202
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 202)
+
+		// without update perm should 403
+		resp, err = resty.R().SetBasicAuth(username, passphrase).SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+
+		// add update perm
+		c.Config.HTTP.AccessControl.AdminPolicy.Actions = append(c.Config.HTTP.AccessControl.AdminPolicy.Actions, "update")
+		// update manifest should get 201 with update perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		// remove admin perm, use defaultAdminPolicy
+		c.Config.HTTP.AccessControl.AdminPolicy.Actions = []string{""}
+		c.Config.HTTP.AccessControl.DefaultAdminPolicy = []string{"read"}
+
+		// with read perm should get 200
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Get(baseURL + "/v2/" + AuthorizationNamespace + "/tags/list")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 200)
+
+		// add create perm
+		c.Config.HTTP.AccessControl.DefaultAdminPolicy = append(c.Config.HTTP.AccessControl.DefaultAdminPolicy, "create")
+		// should get 202 with create perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 202)
+		loc = resp.Header().Get("Location")
+
+		// uploading blob should get 201
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-Length", fmt.Sprintf("%d", len(blob))).
+			SetHeader("Content-Type", "application/octet-stream").
+			SetQueryParam("digest", digest).
+			SetBody(blob).
+			Put(baseURL + loc)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		// add delete perm
+		c.Config.HTTP.AccessControl.DefaultAdminPolicy = append(c.Config.HTTP.AccessControl.DefaultAdminPolicy, "delete")
+		// with delete perm should get 202
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 202)
+
+		// add update perm
+		c.Config.HTTP.AccessControl.DefaultAdminPolicy = append(c.Config.HTTP.AccessControl.DefaultAdminPolicy, "update")
+		// update manifest should get 201 with update perm
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 201)
+
+		// test reloadAccessControlConfig
+		newConfig := api.NewConfig()
+		newConfig.HTTP.Port = port
+		newConfig.HTTP.Auth = &api.AuthConfig{
+			HTPasswd: api.AuthHTPasswd{
+				Path: htpasswdPath,
+			},
+		}
+		newConfig.HTTP.AccessControl = &api.AccessControl{
+			Repositories: api.Repositories{
+				AuthorizationNamespace: api.PolicyGroup{
+					Policies: []api.Policy{
+						{
+							Users:   []string{},
+							Actions: []string{},
+						},
+					},
+					DefaultPolicy: []string{},
+				},
+			},
+			AdminPolicy: api.Policy{
+				Users:   []string{},
+				Actions: []string{},
+			},
+			DefaultAdminPolicy: []string{},
+		}
+
+		err = c.ReloadAccessControlConfig(newConfig)
+		So(err, ShouldBeNil)
+		// should get 403 with the new config
+		resp, err = resty.R().SetBasicAuth(username, passphrase).
+			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
+			SetBody(manifestBlob).
+			Put(baseURL + "/v2/zot-test/manifests/0.0.2")
+		So(err, ShouldBeNil)
+		So(resp, ShouldNotBeNil)
+		So(resp.StatusCode(), ShouldEqual, 403)
+	})
 }
 
 func TestInvalidCases(t *testing.T) {
