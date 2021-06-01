@@ -68,10 +68,10 @@ func (a *AccessController) can(username, action, repository string) bool {
 
 	//check admins based policy
 	if !can {
-		if a.isAdmin(username) {
-			if contains(a.Config.AdminPolicy.Actions, action) || contains(a.Config.DefaultAdminPolicy, action) {
-				can = true
-			}
+		if a.isAdmin(username) && contains(a.Config.AdminPolicy.Actions, action) {
+			can = true
+		} else if contains(a.Config.DefaultPolicy, action) {
+			can = true
 		}
 	}
 
@@ -182,7 +182,8 @@ func getUsername(r *http.Request) string {
 }
 
 func isBearerAuthEnabled(config *Config) bool {
-	if config.HTTP.Auth.Bearer != nil &&
+	if config.HTTP.Auth != nil &&
+		config.HTTP.Auth.Bearer != nil &&
 		config.HTTP.Auth.Bearer.Cert != "" &&
 		config.HTTP.Auth.Bearer.Realm != "" &&
 		config.HTTP.Auth.Bearer.Service != "" {

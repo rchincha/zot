@@ -44,9 +44,9 @@
       },
       "adminPolicy": {
           "users": ["admin"],
-          "actions": ["create", "update", "delete"]
+          "actions": ["read", "create", "update", "delete"]
         },
-      "defaultAdminPolicy": ["read"]
+      "defaultPolicy": ["read"]
     }
   },
   "log": {

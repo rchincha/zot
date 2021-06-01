@@ -1671,7 +1671,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 				Users:   []string{},
 				Actions: []string{},
 			},
-			DefaultAdminPolicy: []string{},
+			DefaultPolicy: []string{},
 		}
 
 		c := api.NewController(config)
@@ -2018,9 +2018,10 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 201)
 
-		// remove admin perm, use defaultAdminPolicy
+		// remove admin perm, use defaultPolicy
 		c.Config.HTTP.AccessControl.AdminPolicy.Actions = []string{""}
-		c.Config.HTTP.AccessControl.DefaultAdminPolicy = []string{"read"}
+		c.Config.HTTP.AccessControl.AdminPolicy.Users = []string{""}
+		c.Config.HTTP.AccessControl.DefaultPolicy = []string{"read"}
 
 		// with read perm should get 200
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
@@ -2030,7 +2031,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 200)
 
 		// add create perm
-		c.Config.HTTP.AccessControl.DefaultAdminPolicy = append(c.Config.HTTP.AccessControl.DefaultAdminPolicy, "create")
+		c.Config.HTTP.AccessControl.DefaultPolicy = append(c.Config.HTTP.AccessControl.DefaultPolicy, "create")
 		// should get 202 with create perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Post(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/uploads/")
@@ -2051,7 +2052,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 201)
 
 		// add delete perm
-		c.Config.HTTP.AccessControl.DefaultAdminPolicy = append(c.Config.HTTP.AccessControl.DefaultAdminPolicy, "delete")
+		c.Config.HTTP.AccessControl.DefaultPolicy = append(c.Config.HTTP.AccessControl.DefaultPolicy, "delete")
 		// with delete perm should get 202
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			Delete(baseURL + "/v2/" + AuthorizationNamespace + "/blobs/" + digest)
@@ -2060,7 +2061,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp.StatusCode(), ShouldEqual, 202)
 
 		// add update perm
-		c.Config.HTTP.AccessControl.DefaultAdminPolicy = append(c.Config.HTTP.AccessControl.DefaultAdminPolicy, "update")
+		c.Config.HTTP.AccessControl.DefaultPolicy = append(c.Config.HTTP.AccessControl.DefaultPolicy, "update")
 		// update manifest should get 201 with update perm
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").
@@ -2094,11 +2095,12 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 				Users:   []string{},
 				Actions: []string{},
 			},
-			DefaultAdminPolicy: []string{},
+			DefaultPolicy: []string{},
 		}
 
 		err = c.ReloadAccessControlConfig(newConfig)
 		So(err, ShouldBeNil)
+
 		// should get 403 with the new config
 		resp, err = resty.R().SetBasicAuth(username, passphrase).
 			SetHeader("Content-type", "application/vnd.oci.image.manifest.v1+json").

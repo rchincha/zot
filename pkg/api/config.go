@@ -95,9 +95,9 @@ type PolicyGroup struct {
 }
 
 type AccessControl struct {
-	Repositories       Repositories `mapstructure:",omitempty"`
-	AdminPolicy        Policy
-	DefaultAdminPolicy []string
+	Repositories  Repositories `mapstructure:",omitempty"`
+	AdminPolicy   Policy
+	DefaultPolicy []string
 }
 
 type Policy struct {

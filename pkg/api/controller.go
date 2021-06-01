@@ -47,11 +47,6 @@ func NewController(config *Config) *Controller {
 }
 
 func (c *Controller) ReloadAccessControlConfig(config *Config) error {
-	if err := config.Validate(c.Log); err != nil {
-		c.Log.Error().Err(err).Msg("configuration validation failed")
-		return err
-	}
-
 	c.Config.HTTP.AccessControl = config.HTTP.AccessControl
 	c.Log.Info().Msgf("accessControl config changed to: %#v", config.HTTP.AccessControl)
 

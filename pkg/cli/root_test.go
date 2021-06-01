@@ -65,6 +65,41 @@ func TestServe(t *testing.T) {
 	})
 }
 
+func TestVerify(t *testing.T) {
+	oldArgs := os.Args
+
+	defer func() { os.Args = oldArgs }()
+
+	Convey("Test verify bad config", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"log":{}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		So(func() { _ = cli.NewRootCmd().Execute() }, ShouldPanic)
+	})
+
+	Convey("Test verify good config", t, func(c C) {
+		tmpfile, err := ioutil.TempFile("", "zot-test*.json")
+		So(err, ShouldBeNil)
+		defer os.Remove(tmpfile.Name()) // clean up
+		content := []byte(`{"version": "0.1.0-dev", "storage": {"rootDirectory": "/tmp/zot"},
+							"http": {"address": "127.0.0.1", "port": "8080", "ReadOnly": false},
+							"log": {"level": "debug"}}`)
+		_, err = tmpfile.Write(content)
+		So(err, ShouldBeNil)
+		err = tmpfile.Close()
+		So(err, ShouldBeNil)
+		os.Args = []string{"cli_test", "verify", tmpfile.Name()}
+		err = cli.NewRootCmd().Execute()
+		So(err, ShouldBeNil)
+	})
+}
+
 func TestGC(t *testing.T) {
 	oldArgs := os.Args
 
