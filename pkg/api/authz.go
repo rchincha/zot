@@ -21,9 +21,32 @@ const (
 	contextKeyID key = 0
 )
 
+type AccessControlConfig struct {
+	Repositories Repositories
+	AdminPolicy  Policy
+}
+
+type Repositories map[string]PolicyGroup
+
+type Repository struct {
+	Name          string
+	Policies      []Policy
+	DefaultPolicy []string
+}
+
+type PolicyGroup struct {
+	Policies      []Policy
+	DefaultPolicy []string
+}
+
+type Policy struct {
+	Users   []string
+	Actions []string
+}
+
 // AccessController authorizes users to act on resources.
 type AccessController struct {
-	Config *AccessControl
+	Config *AccessControlConfig
 	Log    log.Logger
 }
 
@@ -35,16 +58,16 @@ type AccessControllerContext struct {
 
 func NewAccessController(config *Config) *AccessController {
 	return &AccessController{
-		Config: config.HTTP.AccessControl,
+		Config: config.AccessControl,
 		Log:    log.NewLogger(config.Log.Level, config.Log.Output),
 	}
 }
 
 // getReadRepos get repositories from config file that the user has READ perms.
-func (a *AccessController) getReadRepos(username string) []string {
+func (ac *AccessController) getReadRepos(username string) []string {
 	var repos []string
 
-	for r, pg := range a.Config.Repositories {
+	for r, pg := range ac.Config.Repositories {
 		for _, p := range pg.Policies {
 			if (contains(p.Users, username) && contains(p.Actions, READ)) ||
 				contains(pg.DefaultPolicy, READ) {
@@ -56,21 +79,19 @@ func (a *AccessController) getReadRepos(username string) []string {
 	return repos
 }
 
-// can verify if a user can do action on repository.
-func (a *AccessController) can(username, action, repository string) bool {
+// can verifies if a user can do action on repository.
+func (ac *AccessController) can(username, action, repository string) bool {
 	can := false
 	// check repo based policy
-	for r, pg := range a.Config.Repositories {
-		if repository == r {
+	for r, pg := range ac.Config.Repositories {
+		if strings.HasPrefix(repository, r) {
 			can = isPermitted(username, action, pg)
 		}
 	}
 
 	//check admins based policy
 	if !can {
-		if a.isAdmin(username) && contains(a.Config.AdminPolicy.Actions, action) {
-			can = true
-		} else if contains(a.Config.DefaultPolicy, action) {
+		if ac.isAdmin(username) && contains(ac.Config.AdminPolicy.Actions, action) {
 			can = true
 		}
 	}
@@ -78,9 +99,25 @@ func (a *AccessController) can(username, action, repository string) bool {
 	return can
 }
 
-// isAdmin returns if user is .
-func (a *AccessController) isAdmin(username string) bool {
-	return contains(a.Config.AdminPolicy.Users, username)
+// isAdmin .
+func (ac *AccessController) isAdmin(username string) bool {
+	return contains(ac.Config.AdminPolicy.Users, username)
+}
+
+// getContext builds ac context(allowed to read repos and if user is admin) and returns it.
+func (ac *AccessController) getContext(username string, r *http.Request) context.Context {
+	userAllowedRepos := ac.getReadRepos(username)
+	acContext := AccessControllerContext{userAllowedRepos: userAllowedRepos}
+
+	if ac.isAdmin(username) {
+		acContext.isAdmin = true
+	} else {
+		acContext.isAdmin = false
+	}
+
+	ctx := context.WithValue(r.Context(), contextKeyID, acContext)
+
+	return ctx
 }
 
 // isPermitted returns true if username can do action on a repository policy.
@@ -106,7 +143,17 @@ func isPermitted(username, action string, pg PolicyGroup) bool {
 
 func contains(slice []string, item string) bool {
 	for _, v := range slice {
-		if v == item {
+		if item == v {
+			return true
+		}
+	}
+
+	return false
+}
+
+func containsRepo(slice []string, item string) bool {
+	for _, v := range slice {
+		if strings.HasPrefix(item, v) {
 			return true
 		}
 	}
@@ -123,17 +170,8 @@ func AuthzHandler(c *Controller) mux.MiddlewareFunc {
 
 			ac := NewAccessController(c.Config)
 			username := getUsername(r)
+			ctx := ac.getContext(username, r)
 
-			// build acl context for this user and pass it down
-			userAllowedRepos := ac.getReadRepos(username)
-			acContext := AccessControllerContext{userAllowedRepos: userAllowedRepos}
-
-			if ac.isAdmin(username) {
-				acContext.isAdmin = true
-			} else {
-				acContext.isAdmin = false
-			}
-			ctx := context.WithValue(r.Context(), contextKeyID, acContext)
 			if r.RequestURI == "/v2/_catalog" || r.RequestURI == "/v2/" {
 				next.ServeHTTP(w, r.WithContext(ctx))
 				return
@@ -147,6 +185,7 @@ func AuthzHandler(c *Controller) mux.MiddlewareFunc {
 			if r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodPost {
 				// assume user wants to create
 				action = CREATE
+				// if we get a reference (tag)
 				if ok {
 					is := c.StoreController.GetImageStore(resource)
 					tags, err := is.GetImageTags(resource)

@@ -55,7 +55,7 @@ func NewRouteHandler(c *Controller) *RouteHandler {
 func (rh *RouteHandler) SetupRoutes() {
 	rh.c.Router.Use(AuthHandler(rh.c))
 
-	if rh.c.Config.HTTP.AccessControl != nil && !isBearerAuthEnabled(rh.c.Config) {
+	if !isBearerAuthEnabled(rh.c.Config) && rh.c.Config.AccessControl != nil {
 		rh.c.Router.Use(AuthzHandler(rh.c))
 	}
 
@@ -1144,9 +1144,9 @@ func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request)
 	var repos []string
 	// get passed context from authzHandler and filter out repos based on permissions
 	if acContext := r.Context().Value(contextKeyID); acContext != nil {
-		aclContext := acContext.(AccessControllerContext)
+		acContext := acContext.(AccessControllerContext)
 		for _, r := range combineRepoList {
-			if contains(aclContext.userAllowedRepos, r) || aclContext.isAdmin {
+			if containsRepo(acContext.userAllowedRepos, r) || acContext.isAdmin {
 				repos = append(repos, r)
 			}
 		}

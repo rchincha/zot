@@ -32,7 +32,7 @@ func NewRootCmd() *cobra.Command {
 		Long:    "`serve` stores and distributes OCI images",
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
-				loadConfiguration(config, args[0])
+				LoadConfiguration(config, args[0])
 			}
 			c := api.NewController(config)
 
@@ -54,12 +54,8 @@ func NewRootCmd() *cobra.Command {
 							if event.Op == fsnotify.Write {
 								log.Info().Msg("Config file changed, trying to reload accessControl config")
 								newConfig := api.NewConfig()
-								loadConfiguration(newConfig, args[0])
-								err := c.ReloadAccessControlConfig(newConfig)
-								if err != nil {
-									log.Error().Err(err).Msg("Error while parsing new configuration")
-									panic(err)
-								}
+								LoadConfiguration(newConfig, args[0])
+								c.Config.AccessControl = newConfig.AccessControl
 							}
 						// watch for errors
 						case err := <-watcher.Errors:
@@ -90,7 +86,7 @@ func NewRootCmd() *cobra.Command {
 		Run: func(cmd *cobra.Command, args []string) {
 			if len(args) > 0 {
 				config := api.NewConfig()
-				loadConfiguration(config, args[0])
+				LoadConfiguration(config, args[0])
 				log.Info().Msgf("Config file %s is valid", args[0])
 			}
 		},
@@ -148,7 +144,7 @@ func NewRootCmd() *cobra.Command {
 	return rootCmd
 }
 
-func loadConfiguration(config *api.Config, configPath string) {
+func LoadConfiguration(config *api.Config, configPath string) {
 	viper.SetConfigFile(configPath)
 
 	if err := viper.ReadInConfig(); err != nil {
@@ -165,5 +161,11 @@ func loadConfiguration(config *api.Config, configPath string) {
 	if len(md.Keys) == 0 || len(md.Unused) > 0 {
 		log.Error().Err(errors.ErrBadConfig).Msg("Bad configuration, retry writing it")
 		panic(errors.ErrBadConfig)
+	}
+
+	err := config.LoadAccessControlConfig()
+	if err != nil {
+		log.Error().Err(errors.ErrBadConfig).Msg("Unable to unmarshal http.accessControl.key.policies")
+		panic(err)
 	}
 }

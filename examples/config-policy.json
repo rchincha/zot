@@ -14,39 +14,36 @@
       "failDelay": 1
     },
     "accessControl": {
-      "repositories": {
-        "repos1/repo": {
-          "policies": [
-            {
-              "users": ["alice", "bob"],
-              "actions": ["create", "read", "update", "delete"]
-            },
-            {
-              "users": ["mallory"],
-              "actions": ["create", "read"]
-            }
-          ],
-          "defaultPolicy": ["read"]
-        },
-        "repos2/repo": {
-          "policies": [
-            {
-              "users": ["bob"],
-              "actions": ["read", "create"]
-            },
-            {
-              "users": ["mallory"],
-              "actions": ["create", "read"]
-            }
-          ],
-          "defaultPolicy": ["read"]
-        }
+      "repos1/repo": {
+        "policies": [
+          {
+            "users": ["alice", "bob"],
+            "actions": ["create", "read", "update", "delete"]
+          },
+          {
+            "users": ["mallory"],
+            "actions": ["create", "read"]
+          }
+        ],
+        "defaultPolicy": ["read"]
+      },
+      "repos2/repo": {
+        "policies": [
+          {
+            "users": ["bob"],
+            "actions": ["read", "create"]
+          },
+          {
+            "users": ["mallory"],
+            "actions": ["create", "read"]
+          }
+        ],
+        "defaultPolicy": ["read"]
       },
       "adminPolicy": {
           "users": ["admin"],
           "actions": ["read", "create", "update", "delete"]
-        },
-      "defaultPolicy": ["read"]
+      }
     }
   },
   "log": {
