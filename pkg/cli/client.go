@@ -6,11 +6,14 @@ import (
 	"bytes"
 	"context"
 	"crypto/tls"
+	"crypto/x509"
 	"encoding/json"
 	"errors"
 	"io/ioutil"
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -18,20 +21,69 @@ import (
 	zotErrors "github.com/anuvu/zot/errors"
 )
 
-var httpClient *http.Client //nolint: gochecknoglobals
+var httpClientsMap = make(map[string]*http.Client) //nolint: gochecknoglobals
+var httpClientLock sync.Mutex                      //nolint: gochecknoglobals
 
-const httpTimeout = 5 * time.Minute
+const (
+	httpTimeout        = 5 * time.Minute
+	certsPath          = "/etc/containers/certs.d"
+	homeCertsDir       = ".config/containers/certs.d"
+	clientCertFilename = "client.cert"
+	clientKeyFilename  = "client.key"
+	caCertFilename     = "ca.crt"
+)
 
-func createHTTPClient(verifyTLS bool) *http.Client {
+func createHTTPClient(verifyTLS bool, host string) (*http.Client, error) {
 	var tr = http.DefaultTransport.(*http.Transport).Clone()
 	if !verifyTLS {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
+
+		return &http.Client{
+			Timeout:   httpTimeout,
+			Transport: tr,
+		}, nil
 	}
+
+	// Add a copy of the system cert pool
+	caCertPool, err := x509.SystemCertPool()
+	if err != nil {
+		return nil, err
+	}
+
+	tlsConfig := &tls.Config{RootCAs: caCertPool}
+
+	// Check if the /home/user/.config/containers/certs.d/$IP:$PORT dir exists
+	home := os.Getenv("HOME")
+	clientCertsDir := filepath.Join(home, homeCertsDir, host)
+
+	if dirExists(clientCertsDir) {
+		returnedTLSConfig, err := getTLSConfig(clientCertsDir, caCertPool, tlsConfig)
+		if err != nil {
+			return nil, err
+		}
+
+		tlsConfig = returnedTLSConfig
+	} else {
+		// Check if the /etc/containers/certs.d/$IP:$PORT dir exists
+		clientCertsDir := filepath.Join(certsPath, host)
+		if dirExists(clientCertsDir) {
+			returnedTLSConfig, err := getTLSConfig(clientCertsDir, caCertPool, tlsConfig)
+			if err != nil && !os.IsPermission(err) {
+				return nil, err
+			} else if err == nil {
+				tlsConfig = returnedTLSConfig
+			}
+		}
+	}
+
+	tlsConfig.BuildNameToCertificate() // nolint: staticcheck
+
+	tr = &http.Transport{TLSClientConfig: tlsConfig}
 
 	return &http.Client{
 		Timeout:   httpTimeout,
 		Transport: tr,
-	}
+	}, nil
 }
 
 func makeGETRequest(url, username, password string, verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
@@ -70,8 +122,24 @@ func makeGraphQLRequest(url, query, username,
 }
 
 func doHTTPRequest(req *http.Request, verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
-	if httpClient == nil {
-		httpClient = createHTTPClient(verifyTLS)
+	var httpClient *http.Client
+
+	host := req.Host
+
+	httpClientLock.Lock()
+	defer httpClientLock.Unlock()
+
+	if httpClientsMap[host] == nil {
+		var err error
+		httpClient, err = createHTTPClient(verifyTLS, host)
+
+		if err != nil {
+			return nil, err
+		}
+
+		httpClientsMap[host] = httpClient
+	} else {
+		httpClient = httpClientsMap[host]
 	}
 
 	resp, err := httpClient.Do(req)
@@ -96,6 +164,43 @@ func doHTTPRequest(req *http.Request, verifyTLS bool, resultsPtr interface{}) (h
 	}
 
 	return resp.Header, nil
+}
+
+func getTLSConfig(certsPath string, caCertPool *x509.CertPool, tlsConfig *tls.Config) (*tls.Config, error) {
+	clientCert := filepath.Join(certsPath, clientCertFilename)
+	clientKey := filepath.Join(certsPath, clientKeyFilename)
+	caCertFile := filepath.Join(certsPath, caCertFilename)
+
+	cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
+	if err != nil {
+		return nil, err
+	}
+
+	caCert, err := ioutil.ReadFile(caCertFile)
+	if err != nil {
+		return nil, err
+	}
+
+	caCertPool.AppendCertsFromPEM(caCert)
+
+	return &tls.Config{
+		Certificates:       []tls.Certificate{cert},
+		RootCAs:            caCertPool,
+		InsecureSkipVerify: tlsConfig.InsecureSkipVerify, //nolint: gosec
+	}, nil
+}
+
+func dirExists(d string) bool {
+	fi, err := os.Stat(d)
+	if err != nil && os.IsNotExist(err) {
+		return false
+	}
+
+	if !fi.IsDir() {
+		return false
+	}
+
+	return true
 }
 
 func isURL(str string) bool {
