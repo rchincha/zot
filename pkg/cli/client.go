@@ -52,31 +52,45 @@ func createHTTPClient(verifyTLS bool, host string) (*http.Client, error) {
 
 	tlsConfig := &tls.Config{RootCAs: caCertPool}
 
-	// Check if the /home/user/.config/containers/certs.d/$IP:$PORT dir exists
-	home := os.Getenv("HOME")
-	clientCertsDir := filepath.Join(home, homeCertsDir, host)
-
-	if dirExists(clientCertsDir) {
-		returnedTLSConfig, err := getTLSConfig(clientCertsDir, caCertPool, tlsConfig)
-		if err != nil {
-			return nil, err
-		}
-
-		tlsConfig = returnedTLSConfig
-	} else {
-		// Check if the /etc/containers/certs.d/$IP:$PORT dir exists
-		clientCertsDir := filepath.Join(certsPath, host)
-		if dirExists(clientCertsDir) {
-			returnedTLSConfig, err := getTLSConfig(clientCertsDir, caCertPool, tlsConfig)
-			if err != nil && !os.IsPermission(err) {
-				return nil, err
-			} else if err == nil {
-				tlsConfig = returnedTLSConfig
-			}
-		}
+	if err != loadPerHostCerts(tlsConfig, host); err != nil {
+		// we may or may not have the per host certs, and we should fallback to the above caCertPool
+		// so an error here has to be catastrophic
 	}
 
-	tlsConfig.BuildNameToCertificate() // nolint: staticcheck
+	/*
+
+			Move this following into "loadPerHostCerts()" method
+
+
+
+			// Check if the /home/user/.config/containers/certs.d/$IP:$PORT dir exists
+			home := os.Getenv("HOME")
+			clientCertsDir := filepath.Join(home, homeCertsDir, host)
+
+			if dirExists(clientCertsDir) {
+				returnedTLSConfig, err := getTLSConfig(clientCertsDir, caCertPool, tlsConfig)
+				if err != nil {
+					return nil, err
+				}
+
+				tlsConfig = returnedTLSConfig
+			} else {
+				// Check if the /etc/containers/certs.d/$IP:$PORT dir exists
+				clientCertsDir := filepath.Join(certsPath, host)
+				if dirExists(clientCertsDir) {
+					returnedTLSConfig, err := getTLSConfig(clientCertsDir, caCertPool, tlsConfig)
+					if err != nil && !os.IsPermission(err) {
+						return nil, err
+					} else if err == nil {
+						tlsConfig = returnedTLSConfig
+					}
+				}
+			}
+
+
+		tlsConfig.BuildNameToCertificate() // nolint: staticcheck	<= this is DEPRECATED, so remove
+
+	*/
 
 	tr = &http.Transport{TLSClientConfig: tlsConfig}
 
