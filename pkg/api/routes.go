@@ -1143,10 +1143,10 @@ func (rh *RouteHandler) ListRepositories(w http.ResponseWriter, r *http.Request)
 
 	var repos []string
 	// get passed context from authzHandler and filter out repos based on permissions
-	if acContext := r.Context().Value(contextKeyID); acContext != nil {
-		acContext := acContext.(AccessControllerContext)
+	if authCtx := r.Context().Value(authzCtxKey); authCtx != nil {
+		acCtx := authCtx.(AccessControlContext)
 		for _, r := range combineRepoList {
-			if containsRepo(acContext.userAllowedRepos, r) || acContext.isAdmin {
+			if containsRepo(acCtx.userAllowedRepos, r) || acCtx.isAdmin {
 				repos = append(repos, r)
 			}
 		}

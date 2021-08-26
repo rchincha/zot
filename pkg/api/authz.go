@@ -11,14 +11,17 @@ import (
 	"github.com/gorilla/mux"
 )
 
-type key int
+type contextKey int
 
 const (
-	CREATE           = "create"
-	READ             = "read"
-	UPDATE           = "update"
-	DELETE           = "delete"
-	contextKeyID key = 0
+	// actions
+	CREATE = "create"
+	READ   = "read"
+	UPDATE = "update"
+	DELETE = "delete"
+
+	// request-local context key
+	authzCtxKey contextKey = 0
 )
 
 type AccessControlConfig struct {
@@ -50,8 +53,8 @@ type AccessController struct {
 	Log    log.Logger
 }
 
-// AccessControllerContext context passed down to http.Handlers.
-type AccessControllerContext struct {
+// AccessControlContext context passed down to http.Handlers.
+type AccessControlContext struct {
 	userAllowedRepos []string
 	isAdmin          bool
 }
@@ -107,15 +110,15 @@ func (ac *AccessController) isAdmin(username string) bool {
 // getContext builds ac context(allowed to read repos and if user is admin) and returns it.
 func (ac *AccessController) getContext(username string, r *http.Request) context.Context {
 	userAllowedRepos := ac.getReadRepos(username)
-	acContext := AccessControllerContext{userAllowedRepos: userAllowedRepos}
+	acCtx := AccessControlContext{userAllowedRepos: userAllowedRepos}
 
 	if ac.isAdmin(username) {
-		acContext.isAdmin = true
+		acCtx.isAdmin = true
 	} else {
-		acContext.isAdmin = false
+		acCtx.isAdmin = false
 	}
 
-	ctx := context.WithValue(r.Context(), contextKeyID, acContext)
+	ctx := context.WithValue(r.Context(), authzCtxKey, acCtx)
 
 	return ctx
 }
