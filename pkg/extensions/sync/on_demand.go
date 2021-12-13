@@ -82,7 +82,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 
 		localRepo := path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid.String(), imageName)
 
-		if err = os.MkdirAll(localRepo, 0755); err != nil {
+		if err = os.MkdirAll(localRepo, 0o755); err != nil {
 			log.Error().Err(err).Str("dir", localRepo).Msg("couldn't create temporary dir")
 			return err
 		}

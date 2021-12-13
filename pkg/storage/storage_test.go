@@ -15,6 +15,13 @@ import (
 	//"strings"
 	"testing"
 
+	// Add s3 support
+	storageDriver "github.com/docker/distribution/registry/storage/driver"
+
+	// Add s3 support
+	storageDriver "github.com/docker/distribution/registry/storage/driver"
+	"github.com/docker/distribution/registry/storage/driver/factory"
+	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -25,12 +32,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/s3"
-
-	// Add s3 support
-	"github.com/docker/distribution/registry/storage/driver"
-	storageDriver "github.com/docker/distribution/registry/storage/driver"
-	"github.com/docker/distribution/registry/storage/driver/factory"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 )
 
 func cleanupStorage(store storageDriver.StorageDriver, name string) {
@@ -476,11 +477,11 @@ func TestStorageAPIs(t *testing.T) {
 							So(err, ShouldBeNil)
 
 							if testcase.storageType == "fs" {
-								err = os.Chmod(path.Join(il.RootDir(), "test", "index.json"), 0000)
+								err = os.Chmod(path.Join(il.RootDir(), "test", "index.json"), 0o000)
 								So(err, ShouldBeNil)
 								_, err = il.GetIndexContent("test")
 								So(err, ShouldNotBeNil)
-								err = os.Chmod(path.Join(il.RootDir(), "test", "index.json"), 0644)
+								err = os.Chmod(path.Join(il.RootDir(), "test", "index.json"), 0o644)
 								So(err, ShouldBeNil)
 							}
 

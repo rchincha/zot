@@ -23,8 +23,10 @@ import (
 	"zotregistry.io/zot/pkg/storage"
 )
 
-var httpClientsMap = make(map[string]*http.Client) //nolint: gochecknoglobals
-var httpClientLock sync.Mutex                      //nolint: gochecknoglobals
+var (
+	httpClientsMap = make(map[string]*http.Client) //nolint: gochecknoglobals
+	httpClientLock sync.Mutex                      //nolint: gochecknoglobals
+)
 
 const (
 	httpTimeout        = 5 * time.Minute
@@ -36,7 +38,7 @@ const (
 )
 
 func createHTTPClient(verifyTLS bool, host string) *http.Client {
-	var tr = http.DefaultTransport.(*http.Transport).Clone()
+	tr := http.DefaultTransport.(*http.Transport).Clone()
 	if !verifyTLS {
 		tr.TLSClientConfig = &tls.Config{InsecureSkipVerify: true} //nolint: gosec
 
@@ -64,7 +66,6 @@ func createHTTPClient(verifyTLS bool, host string) *http.Client {
 
 func makeGETRequest(url, username, password string, verifyTLS bool, resultsPtr interface{}) (http.Header, error) {
 	req, err := http.NewRequest("GET", url, nil)
-
 	if err != nil {
 		return nil, err
 	}

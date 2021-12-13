@@ -260,7 +260,8 @@ func TestSyncOnDemand(t *testing.T) {
 		}
 
 		syncConfig := &sync.Config{
-			Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -289,7 +290,7 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage), 0000)
+		err = os.Chmod(path.Join(destDir, testImage), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -298,7 +299,7 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 500)
 
-		err = os.Chmod(path.Join(destDir, testImage), 0755)
+		err = os.Chmod(path.Join(destDir, testImage), 0o755)
 		if err != nil {
 			panic(err)
 		}
@@ -307,7 +308,7 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0000)
+		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -320,12 +321,12 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0755)
+		err = os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o755)
 		if err != nil {
 			panic(err)
 		}
 
-		err = os.MkdirAll(path.Join(destDir, testImage, "blobs"), 0000)
+		err = os.MkdirAll(path.Join(destDir, testImage, "blobs"), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -334,7 +335,7 @@ func TestSyncOnDemand(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, 404)
 
-		err = os.Chmod(path.Join(destDir, testImage, "blobs"), 0755)
+		err = os.Chmod(path.Join(destDir, testImage, "blobs"), 0o755)
 		if err != nil {
 			panic(err)
 		}
@@ -572,7 +573,7 @@ func TestSyncPermsDenied(t *testing.T) {
 			dc.Shutdown()
 		}()
 
-		err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0000)
+		err := os.Chmod(path.Join(destDir, testImage, sync.SyncBlobUploadDir), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -779,8 +780,10 @@ func TestSyncBasicAuth(t *testing.T) {
 				CertDir:      "",
 			}
 
-			syncConfig := &sync.Config{CredentialsFile: credentialsFile,
-				Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			syncConfig := &sync.Config{
+				CredentialsFile: credentialsFile,
+				Registries:      []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -875,8 +878,10 @@ func TestSyncBasicAuth(t *testing.T) {
 
 			destConfig.Extensions = &extconf.ExtensionConfig{}
 			destConfig.Extensions.Search = nil
-			destConfig.Extensions.Sync = &sync.Config{CredentialsFile: credentialsFile,
-				Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			destConfig.Extensions.Sync = &sync.Config{
+				CredentialsFile: credentialsFile,
+				Registries:      []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dc := api.NewController(destConfig)
 
@@ -918,11 +923,11 @@ func TestSyncBasicAuth(t *testing.T) {
 			credentialsFile := makeCredentialsFile(fmt.Sprintf(`{"%s":{"username": "test", "password": "test"}}`,
 				registryName))
 
-			err := os.Chmod(credentialsFile, 0000)
+			err := os.Chmod(credentialsFile, 0o000)
 			So(err, ShouldBeNil)
 
 			defer func() {
-				So(os.Chmod(credentialsFile, 0755), ShouldBeNil)
+				So(os.Chmod(credentialsFile, 0o755), ShouldBeNil)
 				So(os.RemoveAll(credentialsFile), ShouldBeNil)
 			}()
 
@@ -946,8 +951,10 @@ func TestSyncBasicAuth(t *testing.T) {
 				CertDir:      "",
 			}
 
-			syncConfig := &sync.Config{CredentialsFile: credentialsFile,
-				Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			syncConfig := &sync.Config{
+				CredentialsFile: credentialsFile,
+				Registries:      []sync.RegistryConfig{syncRegistryConfig},
+			}
 
 			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -988,10 +995,14 @@ func TestSyncBasicAuth(t *testing.T) {
 			}
 
 			// add file path to the credentials
-			syncConfig := &sync.Config{CredentialsFile: credentialsFile,
-				Registries: []sync.RegistryConfig{unreacheableSyncRegistryConfig1,
+			syncConfig := &sync.Config{
+				CredentialsFile: credentialsFile,
+				Registries: []sync.RegistryConfig{
+					unreacheableSyncRegistryConfig1,
 					unreacheableSyncRegistryConfig2,
-					syncRegistryConfig}}
+					syncRegistryConfig,
+				},
+			}
 
 			dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 			defer os.RemoveAll(destDir)
@@ -1303,7 +1314,7 @@ func TestSyncInvalidCerts(t *testing.T) {
 			panic(err)
 		}
 
-		f, err := os.OpenFile(destFilePath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0600)
+		f, err := os.OpenFile(destFilePath, os.O_TRUNC|os.O_WRONLY|os.O_CREATE, 0o600)
 		if err != nil {
 			panic(err)
 		}
@@ -1367,7 +1378,7 @@ func makeCredentialsFile(fileContent string) string {
 	}
 
 	content := []byte(fileContent)
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
+	if err := ioutil.WriteFile(f.Name(), content, 0o600); err != nil {
 		panic(err)
 	}
 
@@ -1448,7 +1459,8 @@ func TestSyncInvalidTags(t *testing.T) {
 		}
 
 		syncConfig := &sync.Config{
-			Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		dc, destBaseURL, destDir, destClient := startDownstreamServer(false, syncConfig)
 		defer os.RemoveAll(destDir)
@@ -1533,7 +1545,8 @@ func TestSyncSubPaths(t *testing.T) {
 		}
 
 		syncConfig := &sync.Config{
-			Registries: []sync.RegistryConfig{syncRegistryConfig}}
+			Registries: []sync.RegistryConfig{syncRegistryConfig},
+		}
 
 		destPort := GetFreePort()
 		destConfig := config.New()

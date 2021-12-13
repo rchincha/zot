@@ -69,7 +69,7 @@ func (ac *AccessController) can(username, action, repository string) bool {
 		can = isPermitted(username, action, pg)
 	}
 
-	//check admins based policy
+	// check admins based policy
 	if !can {
 		if ac.isAdmin(username) && contains(ac.Config.AdminPolicy.Actions, action) {
 			can = true

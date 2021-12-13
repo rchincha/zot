@@ -345,7 +345,6 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	content, digest, mediaType, err := getImageManifest(rh, is, name, reference)
-
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:
@@ -1219,7 +1218,7 @@ func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) 
 }
 
 func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
-	var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	body, err := json.Marshal(data)
 	if err != nil {
@@ -1264,7 +1263,6 @@ func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 func getImageManifest(rh *RouteHandler, is storage.ImageStore, name,
 	reference string) ([]byte, string, string, error) {
 	content, digest, mediaType, err := is.GetImageManifest(name, reference)
-
 	if err != nil {
 		switch err {
 		case errors.ErrRepoNotFound:

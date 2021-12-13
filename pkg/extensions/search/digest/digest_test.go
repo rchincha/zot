@@ -79,7 +79,7 @@ func testSetup() error {
 	// zot-cve-test  0.0.1                     63a795ca  8dd57e17            75MB
 	//                                                             7a0437f0  75MB
 
-	err = os.Mkdir(subDir+"/a", 0700)
+	err = os.Mkdir(subDir+"/a", 0o700)
 	if err != nil {
 		return err
 	}

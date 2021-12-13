@@ -11,12 +11,11 @@ import (
 	"os"
 	"path"
 	"strings"
+	"testing"
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	//"strings"
-
-	"testing"
 
 	guuid "github.com/gofrs/uuid"
 	"github.com/rs/zerolog"

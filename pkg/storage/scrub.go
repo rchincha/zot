@@ -53,14 +53,12 @@ func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
 
 	for _, is := range imageStoreList {
 		images, err := is.GetRepositories()
-
 		if err != nil {
 			return results, err
 		}
 
 		for _, repo := range images {
 			imageResults, err := checkImage(repo, is)
-
 			if err != nil {
 				return results, err
 			}
@@ -93,7 +91,6 @@ func checkImage(imageName string, is ImageStore) ([]ScrubImageResult, error) {
 	defer is.RUnlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
-
 	if err != nil {
 		return results, err
 	}

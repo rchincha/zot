@@ -12,6 +12,11 @@ import (
 	"strings"
 	"sync"
 
+	// Add s3 support
+	storageDriver "github.com/docker/distribution/registry/storage/driver"
+
+	// Load s3 driver
+	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-go-lib"
 	godigest "github.com/opencontainers/go-digest"
@@ -21,10 +26,6 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	zlog "zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-
-	// Add s3 support
-	storageDriver "github.com/docker/distribution/registry/storage/driver"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws" // Load s3 driver
 )
 
 // ObjectStorage provides the image storage operations.
@@ -102,7 +103,6 @@ func (is *ObjectStorage) initRepo(name string) error {
 	if _, err := is.store.Stat(context.Background(), ilPath); err != nil {
 		il := ispec.ImageLayout{Version: ispec.ImageLayoutVersion}
 		buf, err := json.Marshal(il)
-
 		if err != nil {
 			is.log.Error().Err(err).Msg("unable to marshal JSON")
 			return err
@@ -120,7 +120,6 @@ func (is *ObjectStorage) initRepo(name string) error {
 		index := ispec.Index{}
 		index.SchemaVersion = 2
 		buf, err := json.Marshal(index)
-
 		if err != nil {
 			is.log.Error().Err(err).Msg("unable to marshal JSON")
 			return err
@@ -422,8 +421,10 @@ func (is *ObjectStorage) PutImageManifest(repo string, reference string, mediaTy
 
 	updateIndex := true
 	// create a new descriptor
-	desc := ispec.Descriptor{MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
-		Platform: &ispec.Platform{Architecture: "amd64", OS: "linux"}}
+	desc := ispec.Descriptor{
+		MediaType: mediaType, Size: int64(len(body)), Digest: mDigest,
+		Platform: &ispec.Platform{Architecture: "amd64", OS: "linux"},
+	}
 	if !refIsDigest {
 		desc.Annotations = map[string]string{ispec.AnnotationRefName: reference}
 	}

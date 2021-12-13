@@ -33,8 +33,7 @@ func NewCache(rootDir string, name string, log zlog.Logger) *Cache {
 		Timeout:      dbCacheLockCheckTimeout,
 		FreelistType: bbolt.FreelistArrayType,
 	}
-	db, err := bbolt.Open(dbPath, 0600, dbOpts)
-
+	db, err := bbolt.Open(dbPath, 0o600, dbOpts)
 	if err != nil {
 		log.Error().Err(err).Str("dbPath", dbPath).Msg("unable to create cache db")
 		return nil

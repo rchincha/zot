@@ -126,7 +126,6 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 
 			if c.Config.HTTP.Auth.LDAP.CACert != "" {
 				caCert, err := ioutil.ReadFile(c.Config.HTTP.Auth.LDAP.CACert)
-
 				if err != nil {
 					panic(err)
 				}
@@ -141,7 +140,6 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 			} else {
 				// default to system cert pool
 				caCertPool, err := x509.SystemCertPool()
-
 				if err != nil {
 					panic(errors.ErrBadCACert)
 				}
@@ -152,7 +150,6 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 
 		if c.Config.HTTP.Auth.HTPasswd.Path != "" {
 			f, err := os.Open(c.Config.HTTP.Auth.HTPasswd.Path)
-
 			if err != nil {
 				panic(err)
 			}

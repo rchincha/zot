@@ -76,7 +76,7 @@ func TestStorageFSAPIs(t *testing.T) {
 			mb, _ := json.Marshal(m)
 			d = godigest.FromBytes(mb)
 
-			err = os.Chmod(path.Join(il.RootDir(), repoName, "index.json"), 0000)
+			err = os.Chmod(path.Join(il.RootDir(), repoName, "index.json"), 0o000)
 			if err != nil {
 				panic(err)
 			}
@@ -84,7 +84,7 @@ func TestStorageFSAPIs(t *testing.T) {
 			_, err = il.PutImageManifest(repoName, "1.0", ispec.MediaTypeImageManifest, mb)
 			So(err, ShouldNotBeNil)
 
-			err = os.Chmod(path.Join(il.RootDir(), repoName, "index.json"), 0755)
+			err = os.Chmod(path.Join(il.RootDir(), repoName, "index.json"), 0o755)
 			if err != nil {
 				panic(err)
 			}
@@ -94,7 +94,7 @@ func TestStorageFSAPIs(t *testing.T) {
 
 			manifestPath := path.Join(il.RootDir(), repoName, "blobs", d.Algorithm().String(), d.Encoded())
 
-			err = os.Chmod(manifestPath, 0000)
+			err = os.Chmod(manifestPath, 0o000)
 			if err != nil {
 				panic(err)
 			}
@@ -110,14 +110,14 @@ func TestStorageFSAPIs(t *testing.T) {
 			_, _, _, err = il.GetImageManifest(repoName, d.String())
 			So(err, ShouldNotBeNil)
 
-			err = os.Chmod(path.Join(il.RootDir(), repoName), 0000)
+			err = os.Chmod(path.Join(il.RootDir(), repoName), 0o000)
 			if err != nil {
 				panic(err)
 			}
 
 			_, err = il.PutImageManifest(repoName, "2.0", ispec.MediaTypeImageManifest, mb)
 			So(err, ShouldNotBeNil)
-			err = os.Chmod(path.Join(il.RootDir(), repoName), 0755)
+			err = os.Chmod(path.Join(il.RootDir(), repoName), 0o755)
 			if err != nil {
 				panic(err)
 			}
@@ -134,7 +134,7 @@ func TestStorageFSAPIs(t *testing.T) {
 
 			// invalid DeleteImageManifest
 			indexPath := path.Join(il.RootDir(), repoName, "index.json")
-			err = os.Chmod(indexPath, 0000)
+			err = os.Chmod(indexPath, 0o000)
 			if err != nil {
 				panic(err)
 			}
@@ -325,7 +325,7 @@ func TestNegativeCases(t *testing.T) {
 		metrics := monitoring.NewMetricsServer(false, log)
 		il := storage.NewImageStore(dir, true, true, log, metrics)
 
-		err = os.Chmod(dir, 0000) // remove all perms
+		err = os.Chmod(dir, 0o000) // remove all perms
 		if err != nil {
 			panic(err)
 		}
@@ -335,18 +335,18 @@ func TestNegativeCases(t *testing.T) {
 			So(err, ShouldNotBeNil)
 		}
 
-		err = os.Chmod(dir, 0755)
+		err = os.Chmod(dir, 0o755)
 		if err != nil {
 			panic(err)
 		}
 
 		// Init repo should fail if repo is a file.
-		err = ioutil.WriteFile(path.Join(dir, "file-test"), []byte("this is test file"), 0755) // nolint:gosec
+		err = ioutil.WriteFile(path.Join(dir, "file-test"), []byte("this is test file"), 0o755) // nolint:gosec
 		So(err, ShouldBeNil)
 		err = il.InitRepo("file-test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Mkdir(path.Join(dir, "test-dir"), 0755)
+		err = os.Mkdir(path.Join(dir, "test-dir"), 0o755)
 		So(err, ShouldBeNil)
 
 		err = il.InitRepo("test-dir")
@@ -367,10 +367,10 @@ func TestNegativeCases(t *testing.T) {
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 
-		err = os.MkdirAll(path.Join(dir, "invalid-test"), 0755)
+		err = os.MkdirAll(path.Join(dir, "invalid-test"), 0o755)
 		So(err, ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "invalid-test"), 0000) // remove all perms
+		err = os.Chmod(path.Join(dir, "invalid-test"), 0o000) // remove all perms
 		if err != nil {
 			panic(err)
 		}
@@ -378,22 +378,22 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(err, ShouldEqual, errors.ErrRepoNotFound)
 
-		err = os.Chmod(path.Join(dir, "invalid-test"), 0755) // remove all perms
+		err = os.Chmod(path.Join(dir, "invalid-test"), 0o755) // remove all perms
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "blobs"), []byte{}, 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "blobs"), []byte{}, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "index.json"), []byte{}, 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", "index.json"), []byte{}, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte{}, 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte{}, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -406,7 +406,7 @@ func TestNegativeCases(t *testing.T) {
 		if err != nil {
 			panic(err)
 		}
-		err = os.Mkdir(path.Join(dir, "invalid-test", "blobs"), 0755)
+		err = os.Mkdir(path.Join(dir, "invalid-test", "blobs"), 0o755)
 		if err != nil {
 			panic(err)
 		}
@@ -414,7 +414,7 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(isValid, ShouldEqual, false)
 
-		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "invalid-test", ispec.ImageLayoutFile), []byte("{}"), 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -444,7 +444,7 @@ func TestNegativeCases(t *testing.T) {
 		_, err = il.ValidateRepo("test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(dir, 0000) // remove all perms
+		err = os.Chmod(dir, 0o000) // remove all perms
 		if err != nil {
 			panic(err)
 		}
@@ -453,7 +453,7 @@ func TestNegativeCases(t *testing.T) {
 			So(func() { _, _ = il.ValidateRepo("test") }, ShouldPanic)
 		}
 
-		err = os.Chmod(dir, 0755) // remove all perms
+		err = os.Chmod(dir, 0o755) // remove all perms
 		if err != nil {
 			panic(err)
 		}
@@ -489,7 +489,7 @@ func TestNegativeCases(t *testing.T) {
 		So(err, ShouldNotBeNil)
 		So(os.RemoveAll(path.Join(dir, "test")), ShouldBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
-		So(ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0600), ShouldBeNil)
+		So(ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0o600), ShouldBeNil)
 		_, err = il.GetImageTags("test")
 		So(err, ShouldNotBeNil)
 	})
@@ -512,7 +512,7 @@ func TestNegativeCases(t *testing.T) {
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "test", "index.json"), 0000)
+		err = os.Chmod(path.Join(dir, "test", "index.json"), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -535,7 +535,7 @@ func TestNegativeCases(t *testing.T) {
 
 		So(il.InitRepo("test"), ShouldBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0600)
+		err = ioutil.WriteFile(path.Join(dir, "test", "index.json"), []byte{}, 0o600)
 		if err != nil {
 			panic(err)
 		}
@@ -557,14 +557,14 @@ func TestNegativeCases(t *testing.T) {
 		So(il, ShouldNotBeNil)
 		So(il.InitRepo("test"), ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0000)
+		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0o000)
 		if err != nil {
 			panic(err)
 		}
 		_, err = il.NewBlobUpload("test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(path.Join(dir, "test"), 0000)
+		err = os.Chmod(path.Join(dir, "test"), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -572,7 +572,7 @@ func TestNegativeCases(t *testing.T) {
 		_, err = il.NewBlobUpload("test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(path.Join(dir, "test"), 0755)
+		err = os.Chmod(path.Join(dir, "test"), 0o755)
 		if err != nil {
 			panic(err)
 		}
@@ -582,7 +582,7 @@ func TestNegativeCases(t *testing.T) {
 		_, err = il.NewBlobUpload("test")
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0755)
+		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0o755)
 		if err != nil {
 			panic(err)
 		}
@@ -590,7 +590,7 @@ func TestNegativeCases(t *testing.T) {
 		v, err := il.NewBlobUpload("test")
 		So(err, ShouldBeNil)
 
-		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0000)
+		err = os.Chmod(path.Join(dir, "test", ".uploads"), 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -639,12 +639,12 @@ func TestNegativeCases(t *testing.T) {
 		err = il.InitRepo("dedupe2")
 		So(err, ShouldBeNil)
 
-		err = os.MkdirAll(path.Join(dir, "dedupe2", "blobs/sha256"), 0755)
+		err = os.MkdirAll(path.Join(dir, "dedupe2", "blobs/sha256"), 0o755)
 		if err != nil {
 			panic(err)
 		}
 
-		err = ioutil.WriteFile(path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1), content, 0755) // nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "dedupe2", "blobs/sha256", blobDigest1), content, 0o755) // nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -690,7 +690,7 @@ func TestNegativeCases(t *testing.T) {
 		defer os.RemoveAll(dir)
 
 		filePath := path.Join(dir, "file.txt")
-		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0644) //nolint: gosec
+		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -726,7 +726,7 @@ func TestHardLink(t *testing.T) {
 		defer os.RemoveAll(dir)
 
 		filePath := path.Join(dir, "file.txt")
-		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0644) //nolint: gosec
+		err = ioutil.WriteFile(filePath, []byte("some dummy file content"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
@@ -744,12 +744,12 @@ func TestHardLink(t *testing.T) {
 		err = storage.ValidateHardLink(dir)
 		So(err, ShouldBeNil)
 
-		err = ioutil.WriteFile(path.Join(dir, "hardtest.txt"), []byte("testing hard link code"), 0644) //nolint: gosec
+		err = ioutil.WriteFile(path.Join(dir, "hardtest.txt"), []byte("testing hard link code"), 0o644) //nolint: gosec
 		if err != nil {
 			panic(err)
 		}
 
-		err = os.Chmod(dir, 0400)
+		err = os.Chmod(dir, 0o400)
 		if err != nil {
 			panic(err)
 		}
@@ -757,7 +757,7 @@ func TestHardLink(t *testing.T) {
 		err = os.Link(path.Join(dir, "hardtest.txt"), path.Join(dir, "duphardtest.txt"))
 		So(err, ShouldNotBeNil)
 
-		err = os.Chmod(dir, 0644)
+		err = os.Chmod(dir, 0o644)
 		if err != nil {
 			panic(err)
 		}
@@ -765,7 +765,7 @@ func TestHardLink(t *testing.T) {
 }
 
 func randSeq(n int) string {
-	var letters = []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+	letters := []rune("abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
 
 	b := make([]rune, n)
 	for i := range b {

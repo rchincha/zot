@@ -21,7 +21,7 @@ func NewImageCommand(searchService SearchService) *cobra.Command {
 
 	var isSpinner, verifyTLS, verbose bool
 
-	var imageCmd = &cobra.Command{
+	imageCmd := &cobra.Command{
 		Use:   "images [config-name]",
 		Short: "List hosted images",
 		Long:  `List images hosted on zot`,

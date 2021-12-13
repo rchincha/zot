@@ -104,8 +104,10 @@ func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveIn
 
 	cveController.SubCveConfig = subCveConfig
 
-	return &CveInfo{Log: log, CveTrivyController: cveController, StoreController: storeController,
-		LayoutUtils: layoutUtils}, nil
+	return &CveInfo{
+		Log: log, CveTrivyController: cveController, StoreController: storeController,
+		LayoutUtils: layoutUtils,
+	}, nil
 }
 
 func (cveinfo CveInfo) GetTrivyContext(image string) *TrivyCtx {

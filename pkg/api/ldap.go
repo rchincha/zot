@@ -3,17 +3,14 @@
 package api
 
 import (
-	"sync"
-	"time"
-
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
-
-	goldap "github.com/go-ldap/ldap/v3"
-	"zotregistry.io/zot/errors"
+	"sync"
+	"time"
 
 	"github.com/go-ldap/ldap/v3"
+	"zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/log"
 )
 
@@ -41,14 +38,14 @@ type LDAPClient struct {
 // Connect connects to the ldap backend.
 func (lc *LDAPClient) Connect() error {
 	if lc.Conn == nil {
-		var l *goldap.Conn
+		var l *ldap.Conn
 
 		var err error
 
 		address := fmt.Sprintf("%s:%d", lc.Host, lc.Port)
 
 		if !lc.UseSSL {
-			l, err = goldap.Dial("tcp", address)
+			l, err = ldap.Dial("tcp", address)
 			if err != nil {
 				lc.Log.Error().Err(err).Str("address", address).Msg("non-TLS connection failed")
 				return err
@@ -82,7 +79,7 @@ func (lc *LDAPClient) Connect() error {
 				config.Certificates = lc.ClientCertificates
 				config.BuildNameToCertificate() // nolint: staticcheck
 			}
-			l, err = goldap.DialTLS("tcp", address, config)
+			l, err = ldap.DialTLS("tcp", address, config)
 			if err != nil {
 				lc.Log.Error().Err(err).Str("address", address).Msg("TLS connection failed")
 				return err
@@ -158,16 +155,17 @@ func (lc *LDAPClient) Authenticate(username, password string) (bool, map[string]
 		return false, nil, errors.ErrLDAPBadConn
 	}
 
-	attributes := append(lc.Attributes, "dn")
-	searchScope := goldap.ScopeSingleLevel
+	attributes := lc.Attributes
+	attributes = append(attributes, "dn")
+	searchScope := ldap.ScopeSingleLevel
 
 	if lc.SubtreeSearch {
-		searchScope = goldap.ScopeWholeSubtree
+		searchScope = ldap.ScopeWholeSubtree
 	}
 	// Search for the given username
-	searchRequest := goldap.NewSearchRequest(
+	searchRequest := ldap.NewSearchRequest(
 		lc.Base,
-		searchScope, goldap.NeverDerefAliases, 0, 0, false,
+		searchScope, ldap.NeverDerefAliases, 0, 0, false,
 		fmt.Sprintf(lc.UserFilter, username),
 		attributes,
 		nil,

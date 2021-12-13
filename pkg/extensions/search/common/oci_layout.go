@@ -33,7 +33,6 @@ func NewOciLayoutUtils(storeController storage.StoreController, log log.Logger) 
 func (olu OciLayoutUtils) GetImageManifests(image string) ([]ispec.Descriptor, error) {
 	imageStore := olu.StoreController.GetImageStore(image)
 	buf, err := imageStore.GetIndexContent(image)
-
 	if err != nil {
 		if goerrors.Is(errors.ErrRepoNotFound, err) {
 			olu.Log.Error().Err(err).Msg("index.json doesn't exist")

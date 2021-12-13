@@ -264,7 +264,7 @@ func TestHtpasswdSingleCred(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
-				//with invalid creds, it should fail
+				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 401)
@@ -323,7 +323,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 200)
 
-				//with invalid creds, it should fail
+				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 401)
@@ -331,6 +331,7 @@ func TestHtpasswdTwoCreds(t *testing.T) {
 		}
 	})
 }
+
 func TestHtpasswdFiveCreds(t *testing.T) {
 	Convey("Five creds", t, func() {
 		tests := map[string]string{
@@ -376,13 +377,14 @@ func TestHtpasswdFiveCreds(t *testing.T) {
 				So(resp.StatusCode(), ShouldEqual, 200)
 			}
 
-			//with invalid creds, it should fail
+			// with invalid creds, it should fail
 			resp, _ := resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 			So(resp, ShouldNotBeNil)
 			So(resp.StatusCode(), ShouldEqual, 401)
 		}()
 	})
 }
+
 func TestBasicAuth(t *testing.T) {
 	Convey("Make a new controller", t, func() {
 		port := GetFreePort()
@@ -1988,7 +1990,7 @@ func TestAuthorizationWithBasicAuth(t *testing.T) {
 		So(resp, ShouldNotBeNil)
 		So(resp.StatusCode(), ShouldEqual, 202)
 
-		//remove per repo policy
+		// remove per repo policy
 		repoPolicy = conf.AccessControl.Repositories[AuthorizationNamespace]
 		repoPolicy.Policies = []config.Policy{}
 		repoPolicy.DefaultPolicy = []string{}
@@ -2115,7 +2117,7 @@ func TestInvalidCases(t *testing.T) {
 
 		c := api.NewController(conf)
 
-		err := os.Mkdir("oci-repo-test", 0000)
+		err := os.Mkdir("oci-repo-test", 0o000)
 		if err != nil {
 			panic(err)
 		}
@@ -2152,6 +2154,7 @@ func TestInvalidCases(t *testing.T) {
 		So(postResponse.StatusCode(), ShouldEqual, 500)
 	})
 }
+
 func TestHTTPReadOnly(t *testing.T) {
 	Convey("Single cred", t, func() {
 		singleCredtests := []string{}
@@ -2201,7 +2204,7 @@ func TestHTTPReadOnly(t *testing.T) {
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 405)
 
-				//with invalid creds, it should fail
+				// with invalid creds, it should fail
 				resp, _ = resty.R().SetBasicAuth("chuck", "chuck").Get(baseURL + "/v2/")
 				So(resp, ShouldNotBeNil)
 				So(resp.StatusCode(), ShouldEqual, 401)
@@ -2714,7 +2717,6 @@ func TestParallelRequests(t *testing.T) {
 							patchResponse, err := client.R().SetBody(b[0:n]).SetHeader("Content-type", "application/octet-stream").
 								SetBasicAuth(username, passphrase).
 								Patch(baseURL + "/v2/" + testcase.destImageName + "/blobs/uploads/" + sessionID)
-
 							if err != nil {
 								panic(err)
 							}
@@ -2785,7 +2787,7 @@ func TestHardLink(t *testing.T) {
 		}
 		defer os.RemoveAll(dir)
 
-		err = os.Chmod(dir, 0400)
+		err = os.Chmod(dir, 0o400)
 		if err != nil {
 			panic(err)
 		}
@@ -2796,7 +2798,7 @@ func TestHardLink(t *testing.T) {
 		}
 		defer os.RemoveAll(subDir)
 
-		err = os.Chmod(subDir, 0400)
+		err = os.Chmod(subDir, 0o400)
 		if err != nil {
 			panic(err)
 		}
@@ -2811,12 +2813,12 @@ func TestHardLink(t *testing.T) {
 		defer stopServer(c)
 		WaitTillServerReady(baseURL)
 
-		err = os.Chmod(dir, 0644)
+		err = os.Chmod(dir, 0o644)
 		if err != nil {
 			panic(err)
 		}
 
-		err = os.Chmod(subDir, 0644)
+		err = os.Chmod(subDir, 0o644)
 		if err != nil {
 			panic(err)
 		}
@@ -3069,7 +3071,7 @@ func TestImageSignatures(t *testing.T) {
 				So(err, ShouldBeNil)
 				So(len(refs.References), ShouldEqual, 1)
 				err = ioutil.WriteFile(path.Join(dir, repoName, "blobs",
-					strings.ReplaceAll(refs.References[0].Digest.String(), ":", "/")), []byte("corrupt"), 0600)
+					strings.ReplaceAll(refs.References[0].Digest.String(), ":", "/")), []byte("corrupt"), 0o600)
 				So(err, ShouldBeNil)
 				resp, err = resty.R().SetQueryParam("artifactType", notreg.ArtifactTypeNotation).Get(
 					fmt.Sprintf("%s/oras/artifacts/v1/%s/manifests/%s/referrers", baseURL, repoName, digest.String()))
@@ -3145,7 +3147,6 @@ func getAllBlobs(imagePath string) []string {
 	}
 
 	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
-
 	if err != nil {
 		panic(err)
 	}
@@ -3191,7 +3192,6 @@ func getAllManifests(imagePath string) []string {
 	}
 
 	buf, err := ioutil.ReadFile(path.Join(imagePath, "index.json"))
-
 	if err != nil {
 		panic(err)
 	}

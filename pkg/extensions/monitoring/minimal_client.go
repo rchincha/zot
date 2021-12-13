@@ -67,7 +67,6 @@ func (mc *MetricsClient) GetMetrics() (*MetricsInfo, error) {
 
 func (mc *MetricsClient) makeGETRequest(url string, resultsPtr interface{}) (http.Header, error) {
 	req, err := http.NewRequest("GET", url, nil)
-
 	if err != nil {
 		return nil, err
 	}

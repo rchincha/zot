@@ -25,10 +25,7 @@ func metadataConfig(md *mapstructure.Metadata) viper.DecoderConfigOption {
 	}
 }
 
-func NewRootCmd() *cobra.Command {
-	showVersion := false
-	conf := config.New()
-
+func newServeCmd(conf *config.Config) *cobra.Command {
 	// "serve"
 	serveCmd := &cobra.Command{
 		Use:     "serve <config>",
@@ -83,6 +80,10 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
+	return serveCmd
+}
+
+func newScrubCmd(conf *config.Config) *cobra.Command {
 	// "scrub"
 	scrubCmd := &cobra.Command{
 		Use:     "scrub <config>",
@@ -90,10 +91,8 @@ func NewRootCmd() *cobra.Command {
 		Short:   "`scrub` checks manifest/blob integrity",
 		Long:    "`scrub` checks manifest/blob integrity",
 		Run: func(cmd *cobra.Command, args []string) {
-			configuration := config.New()
-
 			if len(args) > 0 {
-				LoadConfiguration(configuration, args[0])
+				LoadConfiguration(conf, args[0])
 			} else {
 				if err := cmd.Usage(); err != nil {
 					panic(err)
@@ -102,7 +101,7 @@ func NewRootCmd() *cobra.Command {
 			}
 
 			// checking if the server is  already running
-			response, err := http.Get(fmt.Sprintf("http://%s:%s/v2", configuration.HTTP.Address, configuration.HTTP.Port))
+			response, err := http.Get(fmt.Sprintf("http://%s:%s/v2", conf.HTTP.Address, conf.HTTP.Port))
 
 			if err == nil {
 				response.Body.Close()
@@ -110,7 +109,7 @@ func NewRootCmd() *cobra.Command {
 				panic("Error: server is running")
 			} else {
 				// server is down
-				c := api.NewController(configuration)
+				c := api.NewController(conf)
 
 				if err := c.InitImageStore(); err != nil {
 					panic(err)
@@ -126,20 +125,10 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
-	verifyCmd := &cobra.Command{
-		Use:     "verify <config>",
-		Aliases: []string{"verify"},
-		Short:   "`verify` validates a zot config file",
-		Long:    "`verify` validates a zot config file",
-		Run: func(cmd *cobra.Command, args []string) {
-			if len(args) > 0 {
-				config := config.New()
-				LoadConfiguration(config, args[0])
-				log.Info().Msgf("Config file %s is valid", args[0])
-			}
-		},
-	}
+	return scrubCmd
+}
 
+func newGcCmd(conf *config.Config) *cobra.Command {
 	// "garbage-collect"
 	gcDelUntagged := false
 	gcDryRun := false
@@ -168,6 +157,31 @@ func NewRootCmd() *cobra.Command {
 	gcCmd.Flags().BoolVarP(&gcDryRun, "dry-run", "d", false,
 		"do everything except remove the blobs")
 
+	return gcCmd
+}
+
+func newVerifyCmd(conf *config.Config) *cobra.Command {
+	// verify
+	verifyCmd := &cobra.Command{
+		Use:     "verify <config>",
+		Aliases: []string{"verify"},
+		Short:   "`verify` validates a zot config file",
+		Long:    "`verify` validates a zot config file",
+		Run: func(cmd *cobra.Command, args []string) {
+			if len(args) > 0 {
+				LoadConfiguration(conf, args[0])
+				log.Info().Msgf("Config file %s is valid", args[0])
+			}
+		},
+	}
+
+	return verifyCmd
+}
+
+func NewRootCmd() *cobra.Command {
+	showVersion := false
+	conf := config.New()
+
 	rootCmd := &cobra.Command{
 		Use:   "zot",
 		Short: "`zot`",
@@ -182,10 +196,10 @@ func NewRootCmd() *cobra.Command {
 		},
 	}
 
-	rootCmd.AddCommand(serveCmd)
-	rootCmd.AddCommand(scrubCmd)
-	rootCmd.AddCommand(gcCmd)
-	rootCmd.AddCommand(verifyCmd)
+	rootCmd.AddCommand(newServeCmd(conf))
+	rootCmd.AddCommand(newScrubCmd(conf))
+	rootCmd.AddCommand(newGcCmd(conf))
+	rootCmd.AddCommand(newVerifyCmd(conf))
 
 	enableCli(rootCmd)
 

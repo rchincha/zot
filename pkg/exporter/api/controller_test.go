@@ -163,7 +163,7 @@ func TestNewExporter(t *testing.T) {
 				})
 
 				Convey("Collecting data: Test init value & that increment works on Counters", func() {
-					//Testing initial value of the counter to be 1 after first incrementation call
+					// Testing initial value of the counter to be 1 after first incrementation call
 					monitoring.IncUploadCounter(serverController.Metrics, "testrepo")
 					time.Sleep(SleepTime)
 
@@ -183,7 +183,7 @@ func TestNewExporter(t *testing.T) {
 
 					So(isChannelDrained(ch), ShouldEqual, true)
 
-					//Testing that counter is incremented by 1
+					// Testing that counter is incremented by 1
 					monitoring.IncUploadCounter(serverController.Metrics, "testrepo")
 					time.Sleep(SleepTime)
 
@@ -225,14 +225,14 @@ func TestNewExporter(t *testing.T) {
 					So(isChannelDrained(ch), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init value & that observe works on Summaries", func() {
-					//Testing initial value of the summary counter to be 1 after first observation call
+					// Testing initial value of the summary counter to be 1 after first observation call
 					var latency1, latency2 time.Duration
 					latency1 = getRandomLatency()
 					monitoring.ObserveHTTPRepoLatency(serverController.Metrics, "/v2/testrepo/blogs/dummydigest", latency1)
 					time.Sleep(SleepTime)
 
 					go func() {
-						//this blocks
+						// this blocks
 						zc.Collect(ch)
 					}()
 					readDefaultMetrics(zc, ch)
@@ -254,7 +254,7 @@ func TestNewExporter(t *testing.T) {
 
 					So(isChannelDrained(ch), ShouldEqual, true)
 
-					//Testing that summary counter is incremented by 1 and summary sum is  properly updated
+					// Testing that summary counter is incremented by 1 and summary sum is  properly updated
 					latency2 = getRandomLatency()
 					monitoring.ObserveHTTPRepoLatency(serverController.Metrics, "/v2/testrepo/blogs/dummydigest", latency2)
 					time.Sleep(SleepTime)
@@ -315,13 +315,13 @@ func TestNewExporter(t *testing.T) {
 					So(isChannelDrained(ch), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init value & that observe works on Histogram buckets", func() {
-					//Testing initial value of the histogram counter to be 1 after first observation call
+					// Testing initial value of the histogram counter to be 1 after first observation call
 					latency := getRandomLatency()
 					monitoring.ObserveHTTPMethodLatency(serverController.Metrics, "GET", latency)
 					time.Sleep(SleepTime)
 
 					go func() {
-						//this blocks
+						// this blocks
 						zc.Collect(ch)
 					}()
 					readDefaultMetrics(zc, ch)
@@ -357,7 +357,7 @@ func TestNewExporter(t *testing.T) {
 					So(isChannelDrained(ch), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init Histogram buckets \n", func() {
-					//Generate a random  latency within each bucket and finally test
+					// Generate a random  latency within each bucket and finally test
 					// that "higher" rank bucket counter is incremented by 1
 					var latencySum float64
 
@@ -365,7 +365,7 @@ func TestNewExporter(t *testing.T) {
 					for i, fvalue := range dBuckets {
 						var latency time.Duration
 						if i == 0 {
-							//first bucket value
+							// first bucket value
 							latency = getRandomLatencyN(int64(fvalue * SecondToNanoseconds))
 						} else {
 							pvalue := dBuckets[i-1] // previous bucket value
@@ -378,7 +378,7 @@ func TestNewExporter(t *testing.T) {
 					time.Sleep(SleepTime)
 
 					go func() {
-						//this blocks
+						// this blocks
 						zc.Collect(ch)
 					}()
 					readDefaultMetrics(zc, ch)
@@ -421,7 +421,7 @@ func TestNewExporter(t *testing.T) {
 						go func() {
 							defer wg.Done()
 							m := serverController.Metrics.ReceiveMetrics()
-							var json = jsoniter.ConfigCompatibleWithStandardLibrary
+							json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 							_, err := json.Marshal(m)
 							if err != nil {

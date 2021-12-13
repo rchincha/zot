@@ -16,16 +16,16 @@ import (
 
 const (
 	metricsNamespace = "zot"
-	// Counters
+	// Counters.
 	httpConnRequests = metricsNamespace + ".http.requests"
 	repoDownloads    = metricsNamespace + ".repo.downloads"
 	repoUploads      = metricsNamespace + ".repo.uploads"
-	//Gauge
+	// Gauge.
 	repoStorageBytes = metricsNamespace + ".repo.storage.bytes"
 	serverInfo       = metricsNamespace + ".info"
-	//Summary
+	// Summary
 	httpRepoLatencySeconds = metricsNamespace + ".http.repo.latency.seconds"
-	//Histogram
+	// Histogram
 	httpMethodLatencySeconds = metricsNamespace + ".http.method.latency.seconds"
 
 	metricsScrapeTimeout       = 2 * time.Minute
@@ -290,7 +290,6 @@ func findHistogramValueIndex(metricSlice []*HistogramValue, name string, labelVa
 func (ms *metricServer) CounterInc(cv *CounterValue) {
 	kLabels, ok := GetCounters()[cv.Name] // known label names for the 'name' counter
 	err := sanityChecks(cv.Name, kLabels, ok, cv.LabelNames, cv.LabelValues)
-
 	if err != nil {
 		// The last thing we want is to panic/stop the server due to instrumentation
 		// thus log a message (should be detected during development of new metrics)
@@ -311,7 +310,6 @@ func (ms *metricServer) CounterInc(cv *CounterValue) {
 func (ms *metricServer) GaugeSet(gv *GaugeValue) {
 	kLabels, ok := GetGauges()[gv.Name] // known label names for the 'name' counter
 	err := sanityChecks(gv.Name, kLabels, ok, gv.LabelNames, gv.LabelValues)
-
 	if err != nil {
 		ms.log.Error().Err(err).Msg("Instrumentation error")
 		return
@@ -329,7 +327,6 @@ func (ms *metricServer) GaugeSet(gv *GaugeValue) {
 func (ms *metricServer) SummaryObserve(sv *SummaryValue) {
 	kLabels, ok := GetSummaries()[sv.Name] // known label names for the 'name' summary
 	err := sanityChecks(sv.Name, kLabels, ok, sv.LabelNames, sv.LabelValues)
-
 	if err != nil {
 		ms.log.Error().Err(err).Msg("Instrumentation error")
 		return
@@ -349,7 +346,6 @@ func (ms *metricServer) SummaryObserve(sv *SummaryValue) {
 func (ms *metricServer) HistogramObserve(hv *HistogramValue) {
 	kLabels, ok := GetHistograms()[hv.Name] // known label names for the 'name' counter
 	err := sanityChecks(hv.Name, kLabels, ok, hv.LabelNames, hv.LabelValues)
-
 	if err != nil {
 		ms.log.Error().Err(err).Msg("Instrumentation error")
 		return
@@ -466,7 +462,6 @@ func IncUploadCounter(ms MetricServer, repo string) {
 func SetStorageUsage(ms MetricServer, rootDir string, repo string) {
 	dir := path.Join(rootDir, repo)
 	repoSize, err := getDirSize(dir)
-
 	if err != nil {
 		ms.(*metricServer).log.Error().Err(err).Msg("failed to set storage usage")
 	}

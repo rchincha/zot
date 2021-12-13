@@ -38,22 +38,23 @@ func GetSecureBaseURL(port string) string {
 func MakeHtpasswdFile() string {
 	// bcrypt(username="test", passwd="test")
 	content := "test:$2y$05$hlbSXDp6hzDLu6VwACS39ORvVRpr3OMR4RlJ31jtlaOEGnPjKZI1m\n"
+
 	return MakeHtpasswdFileFromString(content)
 }
 
 func MakeHtpasswdFileFromString(fileContent string) string {
-	f, err := ioutil.TempFile("", "htpasswd-")
+	htpasswdFile, err := ioutil.TempFile("", "htpasswd-")
 	if err != nil {
 		panic(err)
 	}
 
 	// bcrypt(username="test", passwd="test")
 	content := []byte(fileContent)
-	if err := ioutil.WriteFile(f.Name(), content, 0600); err != nil {
+	if err := ioutil.WriteFile(htpasswdFile.Name(), content, 0o600); err != nil {
 		panic(err)
 	}
 
-	return f.Name()
+	return htpasswdFile.Name()
 }
 
 func Location(baseURL string, resp *resty.Response) string {
@@ -63,6 +64,7 @@ func Location(baseURL string, resp *resty.Response) string {
 	// zot implements the latter as per the spec, but some registries appear to
 	// return the former - this needs to be clarified
 	loc := resp.Header().Get("Location")
+
 	return baseURL + loc
 }
 
