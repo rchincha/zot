@@ -44,26 +44,26 @@ func bearerAuthHandler(c *Controller) mux.MiddlewareFunc {
 	}
 
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			vars := mux.Vars(r)
+		return http.HandlerFunc(func(respWriter http.ResponseWriter, request *http.Request) {
+			vars := mux.Vars(request)
 			name := vars["name"]
-			header := r.Header.Get("Authorization")
+			header := request.Header.Get("Authorization")
 			action := auth.PullAction
-			if m := r.Method; m != http.MethodGet && m != http.MethodHead {
+			if m := request.Method; m != http.MethodGet && m != http.MethodHead {
 				action = auth.PushAction
 			}
 			permissions, err := authorizer.Authorize(header, action, name)
 			if err != nil {
 				c.Log.Error().Err(err).Msg("issue parsing Authorization header")
-				w.Header().Set("Content-Type", "application/json")
-				WriteJSON(w, http.StatusInternalServerError, NewErrorList(NewError(UNSUPPORTED)))
+				respWriter.Header().Set("Content-Type", "application/json")
+				WriteJSON(respWriter, http.StatusInternalServerError, NewErrorList(NewError(UNSUPPORTED)))
 				return
 			}
 			if !permissions.Allowed {
-				authFail(w, permissions.WWWAuthenticateHeader, 0)
+				authFail(respWriter, permissions.WWWAuthenticateHeader, 0)
 				return
 			}
-			next.ServeHTTP(w, r)
+			next.ServeHTTP(respWriter, request)
 		})
 	}
 }
@@ -80,22 +80,22 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 	// no password based authN, if neither LDAP nor HTTP BASIC is enabled
 	if c.Config.HTTP.Auth == nil || (c.Config.HTTP.Auth.HTPasswd.Path == "" && c.Config.HTTP.Auth.LDAP == nil) {
 		return func(next http.Handler) http.Handler {
-			return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 				if c.Config.HTTP.AllowReadAccess &&
 					c.Config.HTTP.TLS.CACert != "" &&
-					r.TLS.VerifiedChains == nil &&
-					r.Method != http.MethodGet && r.Method != http.MethodHead {
+					request.TLS.VerifiedChains == nil &&
+					request.Method != http.MethodGet && request.Method != http.MethodHead {
 					authFail(w, realm, 5)
 					return
 				}
 
-				if (r.Method != http.MethodGet && r.Method != http.MethodHead) && c.Config.HTTP.ReadOnly {
+				if (request.Method != http.MethodGet && request.Method != http.MethodHead) && c.Config.HTTP.ReadOnly {
 					// Reject modification requests in read-only mode
 					w.WriteHeader(http.StatusMethodNotAllowed)
 					return
 				}
 				// Process request
-				next.ServeHTTP(w, r)
+				next.ServeHTTP(w, request)
 			})
 		}
 	}
@@ -108,25 +108,24 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 
 	if c.Config.HTTP.Auth != nil {
 		if c.Config.HTTP.Auth.LDAP != nil {
-			l := c.Config.HTTP.Auth.LDAP
+			ldapConfig := c.Config.HTTP.Auth.LDAP
 			ldapClient = &LDAPClient{
-				Host:               l.Address,
-				Port:               l.Port,
-				UseSSL:             !l.Insecure,
-				SkipTLS:            !l.StartTLS,
-				Base:               l.BaseDN,
-				BindDN:             l.BindDN,
-				BindPassword:       l.BindPassword,
-				UserFilter:         fmt.Sprintf("(%s=%%s)", l.UserAttribute),
-				InsecureSkipVerify: l.SkipVerify,
-				ServerName:         l.Address,
+				Host:               ldapConfig.Address,
+				Port:               ldapConfig.Port,
+				UseSSL:             !ldapConfig.Insecure,
+				SkipTLS:            !ldapConfig.StartTLS,
+				Base:               ldapConfig.BaseDN,
+				BindDN:             ldapConfig.BindDN,
+				BindPassword:       ldapConfig.BindPassword,
+				UserFilter:         fmt.Sprintf("(%s=%%s)", ldapConfig.UserAttribute),
+				InsecureSkipVerify: ldapConfig.SkipVerify,
+				ServerName:         ldapConfig.Address,
 				Log:                c.Log,
-				SubtreeSearch:      l.SubtreeSearch,
+				SubtreeSearch:      ldapConfig.SubtreeSearch,
 			}
 
 			if c.Config.HTTP.Auth.LDAP.CACert != "" {
 				caCert, err := ioutil.ReadFile(c.Config.HTTP.Auth.LDAP.CACert)
-
 				if err != nil {
 					panic(err)
 				}
@@ -141,7 +140,6 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 			} else {
 				// default to system cert pool
 				caCertPool, err := x509.SystemCertPool()
-
 				if err != nil {
 					panic(errors.ErrBadCACert)
 				}
@@ -152,7 +150,6 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 
 		if c.Config.HTTP.Auth.HTPasswd.Path != "" {
 			f, err := os.Open(c.Config.HTTP.Auth.HTPasswd.Path)
-
 			if err != nil {
 				panic(err)
 			}

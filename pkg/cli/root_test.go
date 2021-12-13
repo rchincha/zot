@@ -6,14 +6,12 @@ import (
 	"io/ioutil"
 	"os"
 	"path"
-
-	"gopkg.in/resty.v1"
-
 	"testing"
 	"time"
 
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/viper"
+	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"
@@ -365,20 +363,20 @@ func TestScrub(t *testing.T) {
 				panic(err)
 			}
 
-			if err := os.MkdirAll(fmt.Sprintf("%s/blobs", repo), 0755); err != nil {
+			if err := os.MkdirAll(fmt.Sprintf("%s/blobs", repo), 0o755); err != nil {
 				panic(err)
 			}
 
 			if _, err = os.Stat(fmt.Sprintf("%s/oci-layout", repo)); err != nil {
 				content := []byte(`{"imageLayoutVersion": "1.0.0"}`)
-				if err = ioutil.WriteFile(fmt.Sprintf("%s/oci-layout", repo), content, 0600); err != nil {
+				if err = ioutil.WriteFile(fmt.Sprintf("%s/oci-layout", repo), content, 0o600); err != nil {
 					panic(err)
 				}
 			}
 
 			if _, err = os.Stat(fmt.Sprintf("%s/index.json", repo)); err != nil {
 				content := []byte(`not a JSON content`)
-				if err = ioutil.WriteFile(fmt.Sprintf("%s/index.json", repo), content, 0600); err != nil {
+				if err = ioutil.WriteFile(fmt.Sprintf("%s/index.json", repo), content, 0o600); err != nil {
 					panic(err)
 				}
 			}

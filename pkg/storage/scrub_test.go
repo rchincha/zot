@@ -68,7 +68,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 		So(u, ShouldNotBeEmpty)
 		layer = d.String()
 
-		//create config digest
+		// create config digest
 		created := time.Now().Format("2006-01-02T15:04:05Z")
 		configBody := []byte(fmt.Sprintf(`{
 				"created":      "%v",
@@ -166,7 +166,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected parse application/vnd.oci.image.manifest.v1+json")
 
 			// put manifest content back to file
-			err = ioutil.WriteFile(manifestFile, content, 0600)
+			err = ioutil.WriteFile(manifestFile, content, 0o600)
 			So(err, ShouldBeNil)
 		})
 
@@ -194,7 +194,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected stat: parse application/vnd.oci.image.config.v1+json")
 
 			// put config content back to file
-			err = ioutil.WriteFile(configFile, content, 0600)
+			err = ioutil.WriteFile(configFile, content, 0o600)
 			So(err, ShouldBeNil)
 		})
 
@@ -222,7 +222,7 @@ func TestCheckAllBlobsIntegrity(t *testing.T) {
 			So(actual, ShouldContainSubstring, "test 1.0 affected blob: bad blob digest")
 
 			// put layer content back to file
-			err = ioutil.WriteFile(layerFile, content, 0600)
+			err = ioutil.WriteFile(layerFile, content, 0o600)
 			So(err, ShouldBeNil)
 		})
 

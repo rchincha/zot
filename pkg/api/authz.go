@@ -69,7 +69,7 @@ func (ac *AccessController) can(username, action, repository string) bool {
 		can = isPermitted(username, action, pg)
 	}
 
-	//check admins based policy
+	// check admins based policy
 	if !can {
 		if ac.isAdmin(username) && contains(ac.Config.AdminPolicy.Actions, action) {
 			can = true
@@ -107,6 +107,7 @@ func isPermitted(username, action string, pg config.PolicyGroup) bool {
 	for _, p := range pg.Policies {
 		if contains(p.Users, username) && contains(p.Actions, action) {
 			result = true
+
 			break
 		}
 	}
@@ -143,26 +144,26 @@ func containsRepo(slice []string, item string) bool {
 
 func AuthzHandler(c *Controller) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			vars := mux.Vars(r)
+		return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
+			vars := mux.Vars(request)
 			resource := vars["name"]
 			reference, ok := vars["reference"]
 
 			ac := NewAccessController(c.Config)
-			username := getUsername(r)
-			ctx := ac.getContext(username, r)
+			username := getUsername(request)
+			ctx := ac.getContext(username, request)
 
-			if r.RequestURI == "/v2/_catalog" || r.RequestURI == "/v2/" {
-				next.ServeHTTP(w, r.WithContext(ctx))
+			if request.RequestURI == "/v2/_catalog" || request.RequestURI == "/v2/" {
+				next.ServeHTTP(w, request.WithContext(ctx))
 				return
 			}
 
 			var action string
-			if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			if request.Method == http.MethodGet || request.Method == http.MethodHead {
 				action = READ
 			}
 
-			if r.Method == http.MethodPut || r.Method == http.MethodPatch || r.Method == http.MethodPost {
+			if request.Method == http.MethodPut || request.Method == http.MethodPatch || request.Method == http.MethodPost {
 				// assume user wants to create
 				action = CREATE
 				// if we get a reference (tag)
@@ -176,7 +177,7 @@ func AuthzHandler(c *Controller) mux.MiddlewareFunc {
 				}
 			}
 
-			if r.Method == http.MethodDelete {
+			if request.Method == http.MethodDelete {
 				action = DELETE
 			}
 
@@ -184,7 +185,7 @@ func AuthzHandler(c *Controller) mux.MiddlewareFunc {
 			if !can {
 				authzFail(w, c.Config.HTTP.Realm, c.Config.HTTP.Auth.FailDelay)
 			} else {
-				next.ServeHTTP(w, r.WithContext(ctx))
+				next.ServeHTTP(w, request.WithContext(ctx))
 			}
 		})
 	}

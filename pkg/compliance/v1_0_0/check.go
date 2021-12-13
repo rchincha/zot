@@ -13,12 +13,16 @@ import (
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
-	. "github.com/smartystreets/goconvey/convey" // nolint:golint,stylecheck
+
+	// nolint:golint,stylecheck
+	. "github.com/smartystreets/goconvey/convey"
 	"github.com/smartystreets/goconvey/convey/reporting"
 	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/compliance"
-	. "zotregistry.io/zot/test" // nolint:golint,stylecheck
+
+	// nolint:golint,stylecheck
+	. "zotregistry.io/zot/test"
 )
 
 func CheckWorkflows(t *testing.T, config *compliance.Config) {
@@ -42,14 +46,14 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 	Convey("Make API calls to the controller", t, func(c C) {
 		Convey("Check version", func() {
-			Print("\nCheck version")
+			_, _ = Print("\nCheck version")
 			resp, err := resty.R().Get(baseURL + "/v2/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
 		})
 
 		Convey("Get repository catalog", func() {
-			Print("\nGet repository catalog")
+			_, _ = Print("\nGet repository catalog")
 			resp, err := resty.R().Get(baseURL + "/v2/_catalog")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 200)
@@ -84,7 +88,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Get images in a repository", func() {
-			Print("\nGet images in a repository")
+			_, _ = Print("\nGet images in a repository")
 			// non-existent repository should fail
 			resp, err := resty.R().Get(baseURL + "/v2/repo1/tags/list")
 			So(err, ShouldBeNil)
@@ -106,7 +110,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Monolithic blob upload", func() {
-			Print("\nMonolithic blob upload")
+			_, _ = Print("\nMonolithic blob upload")
 			resp, err := resty.R().Post(baseURL + "/v2/repo2/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
@@ -161,7 +165,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Monolithic blob upload with body", func() {
-			Print("\nMonolithic blob upload")
+			_, _ = Print("\nMonolithic blob upload")
 			// create content
 			content := []byte("this is a blob2")
 			digest := godigest.FromBytes(content)
@@ -199,7 +203,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Monolithic blob upload with multiple name components", func() {
-			Print("\nMonolithic blob upload with multiple name components")
+			_, _ = Print("\nMonolithic blob upload with multiple name components")
 			resp, err := resty.R().Post(baseURL + "/v2/repo10/repo20/repo30/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
@@ -254,7 +258,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Chunked blob upload", func() {
-			Print("\nChunked blob upload")
+			_, _ = Print("\nChunked blob upload")
 			resp, err := resty.R().Post(baseURL + "/v2/repo3/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
@@ -322,7 +326,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Chunked blob upload with multiple name components", func() {
-			Print("\nChunked blob upload with multiple name components")
+			_, _ = Print("\nChunked blob upload with multiple name components")
 			resp, err := resty.R().Post(baseURL + "/v2/repo40/repo50/repo60/blobs/uploads/")
 			So(err, ShouldBeNil)
 			So(resp.StatusCode(), ShouldEqual, 202)
@@ -390,7 +394,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Create and delete uploads", func() {
-			Print("\nCreate and delete uploads")
+			_, _ = Print("\nCreate and delete uploads")
 			// create a upload
 			resp, err := resty.R().Post(baseURL + "/v2/repo4/blobs/uploads/")
 			So(err, ShouldBeNil)
@@ -405,7 +409,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Create and delete blobs", func() {
-			Print("\nCreate and delete blobs")
+			_, _ = Print("\nCreate and delete blobs")
 			// create a upload
 			resp, err := resty.R().Post(baseURL + "/v2/repo5/blobs/uploads/")
 			So(err, ShouldBeNil)
@@ -433,7 +437,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Mount blobs", func() {
-			Print("\nMount blobs from another repository")
+			_, _ = Print("\nMount blobs from another repository")
 			// create a upload
 			resp, err := resty.R().Post(baseURL + "/v2/repo6/blobs/uploads/?digest=\"abc\"&&from=\"xyz\"")
 			So(err, ShouldBeNil)
@@ -441,7 +445,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 		})
 
 		Convey("Manifests", func() {
-			Print("\nManifests")
+			_, _ = Print("\nManifests")
 			// create a blob/layer
 			resp, err := resty.R().Post(baseURL + "/v2/repo7/blobs/uploads/")
 			So(err, ShouldBeNil)
@@ -604,7 +608,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 		// pagination
 		Convey("Pagination", func() {
-			Print("\nPagination")
+			_, _ = Print("\nPagination")
 
 			for i := 0; i <= 4; i++ {
 				// create a blob/layer
@@ -682,7 +686,7 @@ func CheckWorkflows(t *testing.T, config *compliance.Config) {
 
 		// this is an additional test for repository names (alphanumeric)
 		Convey("Repository names", func() {
-			Print("\nRepository names")
+			_, _ = Print("\nRepository names")
 			// create a blob/layer
 			resp, err := resty.R().Post(baseURL + "/v2/repotest/blobs/uploads/")
 			So(err, ShouldBeNil)

@@ -21,8 +21,8 @@ func (l Logger) Println(v ...interface{}) {
 
 func NewLogger(level string, output string) Logger {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	lvl, err := zerolog.ParseLevel(level)
 
+	lvl, err := zerolog.ParseLevel(level)
 	if err != nil {
 		panic(err)
 	}
@@ -34,7 +34,7 @@ func NewLogger(level string, output string) Logger {
 	if output == "" {
 		log = zerolog.New(os.Stdout)
 	} else {
-		file, err := os.OpenFile(output, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+		file, err := os.OpenFile(output, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
 		if err != nil {
 			panic(err)
 		}
@@ -46,8 +46,8 @@ func NewLogger(level string, output string) Logger {
 
 func NewAuditLogger(level string, audit string) *Logger {
 	zerolog.TimeFieldFormat = time.RFC3339Nano
-	lvl, err := zerolog.ParseLevel(level)
 
+	lvl, err := zerolog.ParseLevel(level)
 	if err != nil {
 		panic(err)
 	}
@@ -56,7 +56,7 @@ func NewAuditLogger(level string, audit string) *Logger {
 
 	var auditLog zerolog.Logger
 
-	auditFile, err := os.OpenFile(audit, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0600)
+	auditFile, err := os.OpenFile(audit, os.O_APPEND|os.O_WRONLY|os.O_CREATE, 0o600)
 	if err != nil {
 		panic(err)
 	}

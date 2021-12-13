@@ -42,28 +42,30 @@ func parseRepositoryReference(input string) (reference.Named, error) {
 }
 
 // filterRepos filters repos based on prefix given in the config.
-func filterRepos(repos []string, content []Content, log log.Logger) map[int][]string {
+func filterRepos(repos []string, contentList []Content, log log.Logger) map[int][]string {
 	filtered := make(map[int][]string)
 
 	for _, repo := range repos {
-		for contentID, c := range content {
+		for contentID, content := range contentList {
 			var prefix string
 			// handle prefixes starting with '/'
-			if strings.HasPrefix(c.Prefix, "/") {
-				prefix = c.Prefix[1:]
+			if strings.HasPrefix(content.Prefix, "/") {
+				prefix = content.Prefix[1:]
 			} else {
-				prefix = c.Prefix
+				prefix = content.Prefix
 			}
 
 			matched, err := glob.Match(prefix, repo)
 			if err != nil {
 				log.Error().Err(err).Str("pattern",
 					prefix).Msg("error while parsing glob pattern, skipping it...")
+
 				continue
 			}
 
 			if matched {
 				filtered[contentID] = append(filtered[contentID], repo)
+
 				break
 			}
 		}

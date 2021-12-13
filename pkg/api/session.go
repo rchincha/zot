@@ -36,19 +36,19 @@ func (w *statusWriter) Write(b []byte) (int, error) {
 
 // SessionLogger logs session details.
 func SessionLogger(c *Controller) mux.MiddlewareFunc {
-	l := c.Log.With().Str("module", "http").Logger()
+	logger := c.Log.With().Str("module", "http").Logger()
 
 	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		return http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 			// Start timer
 			start := time.Now()
-			path := r.URL.Path
-			raw := r.URL.RawQuery
+			path := request.URL.Path
+			raw := request.URL.RawQuery
 
 			sw := statusWriter{ResponseWriter: w}
 
 			// Process request
-			next.ServeHTTP(&sw, r)
+			next.ServeHTTP(&sw, request)
 
 			// Stop timer
 			end := time.Now()
@@ -57,12 +57,11 @@ func SessionLogger(c *Controller) mux.MiddlewareFunc {
 				// Truncate in a golang < 1.8 safe way
 				latency -= latency % time.Second
 			}
-			clientIP := r.RemoteAddr
-			method := r.Method
+			clientIP := request.RemoteAddr
+			method := request.Method
 			headers := map[string][]string{}
-			username := ""
-			log := l.Info()
-			for key, value := range r.Header {
+			log := logger.Info()
+			for key, value := range request.Header {
 				if key == "Authorization" { // anonymize from logs
 					s := strings.SplitN(value[0], " ", 2)
 					if len(s) == 2 && strings.EqualFold(s[0], "basic") {
@@ -71,8 +70,7 @@ func SessionLogger(c *Controller) mux.MiddlewareFunc {
 							pair := strings.SplitN(string(b), ":", 2)
 							// nolint:gomnd
 							if len(pair) == 2 {
-								username = pair[0]
-								log = log.Str("username", username)
+								log = log.Str("username", pair[0])
 							}
 						}
 					}

@@ -616,14 +616,13 @@ func (service mockService) getFixedTagsForCVE(ctx context.Context, config search
 func makeConfigFile(content string) string {
 	os.Setenv("HOME", os.TempDir())
 	home, err := os.UserHomeDir()
-
 	if err != nil {
 		panic(err)
 	}
 
 	configPath := path.Join(home + "/.zot")
 
-	if err := ioutil.WriteFile(configPath, []byte(content), 0600); err != nil {
+	if err := ioutil.WriteFile(configPath, []byte(content), 0o600); err != nil {
 		panic(err)
 	}
 

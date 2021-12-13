@@ -27,6 +27,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		credentialsFile, err = getFileCredentials(cfg.CredentialsFile)
 		if err != nil {
 			log.Error().Err(err).Msgf("couldn't get registry credentials from %s", cfg.CredentialsFile)
+
 			return err
 		}
 	}
@@ -48,6 +49,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 	for _, regCfg := range cfg.Registries {
 		if !regCfg.OnDemand {
 			log.Info().Msgf("skipping syncing on demand from %s, onDemand flag is false", regCfg.URL)
+
 			continue
 		}
 
@@ -92,7 +94,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 
 		localRepo := path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid.String(), imageName)
 
-		if err = os.MkdirAll(localRepo, 0755); err != nil {
+		if err = os.MkdirAll(localRepo, 0o755); err != nil {
 			log.Error().Err(err).Str("dir", localRepo).Msg("couldn't create temporary dir")
 			return err
 		}

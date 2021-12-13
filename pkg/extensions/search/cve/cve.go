@@ -104,8 +104,10 @@ func GetCVEInfo(storeController storage.StoreController, log log.Logger) (*CveIn
 
 	cveController.SubCveConfig = subCveConfig
 
-	return &CveInfo{Log: log, CveTrivyController: cveController, StoreController: storeController,
-		LayoutUtils: layoutUtils}, nil
+	return &CveInfo{
+		Log: log, CveTrivyController: cveController, StoreController: storeController,
+		LayoutUtils: layoutUtils,
+	}, nil
 }
 
 func (cveinfo CveInfo) GetTrivyContext(image string) *TrivyCtx {
@@ -137,7 +139,7 @@ func (cveinfo CveInfo) GetTrivyContext(image string) *TrivyCtx {
 	return trivyCtx
 }
 
-func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore storage.ImageStore,
+func (cveinfo CveInfo) GetImageListForCVE(repo string, cveID string, imgStore storage.ImageStore,
 	trivyCtx *TrivyCtx) ([]*string, error) {
 	tags := make([]*string, 0)
 
@@ -173,7 +175,7 @@ func (cveinfo CveInfo) GetImageListForCVE(repo string, id string, imgStore stora
 
 		for _, result := range report.Results {
 			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == id {
+				if vulnerability.VulnerabilityID == cveID {
 					copyImgTag := tag
 					tags = append(tags, &copyImgTag)
 

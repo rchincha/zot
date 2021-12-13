@@ -96,7 +96,7 @@ func getUpstreamCatalog(regCfg *RegistryConfig, credentials Credentials, log log
 		caCertPool := x509.NewCertPool()
 		caCertPool.AppendCertsFromPEM(caCert)
 
-		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool})
+		client.SetTLSClientConfig(&tls.Config{RootCAs: caCertPool, MinVersion: tls.VersionTLS12})
 
 		cert, err := tls.LoadX509KeyPair(clientCert, clientKey)
 		if err != nil {
@@ -374,7 +374,7 @@ func syncRegistry(regCfg RegistryConfig, storeController storage.StoreController
 
 		localRepo := path.Join(imageStore.RootDir(), imageName, SyncBlobUploadDir, uuid, imageName)
 
-		if err = os.MkdirAll(localRepo, 0755); err != nil {
+		if err = os.MkdirAll(localRepo, 0o755); err != nil {
 			log.Error().Err(err).Str("dir", localRepo).Msg("couldn't create temporary dir")
 			return err
 		}

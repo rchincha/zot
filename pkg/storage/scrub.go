@@ -31,14 +31,14 @@ const (
 )
 
 type ScrubImageResult struct {
-	ImageName string `json:"image_name"`
+	ImageName string `json:"imageName"`
 	Tag       string `json:"tag"`
 	Status    string `json:"status"`
 	Error     string `json:"error"`
 }
 
 type ScrubResults struct {
-	ScrubResults []ScrubImageResult `json:"scrub_results"`
+	ScrubResults []ScrubImageResult `json:"scrubResults"`
 }
 
 func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
@@ -53,14 +53,12 @@ func (sc StoreController) CheckAllBlobsIntegrity() (ScrubResults, error) {
 
 	for _, is := range imageStoreList {
 		images, err := is.GetRepositories()
-
 		if err != nil {
 			return results, err
 		}
 
 		for _, repo := range images {
 			imageResults, err := checkImage(repo, is)
-
 			if err != nil {
 				return results, err
 			}
@@ -93,7 +91,6 @@ func checkImage(imageName string, is ImageStore) ([]ScrubImageResult, error) {
 	defer is.RUnlock()
 
 	buf, err := ioutil.ReadFile(path.Join(dir, "index.json"))
-
 	if err != nil {
 		return results, err
 	}
@@ -137,12 +134,14 @@ func checkIntegrity(ctx context.Context, imageName, tagName string, oci casext.E
 			_, err = os.Stat(layerPath)
 			if err != nil {
 				imageRes = getResult(imageName, tagName, errors.ErrBlobNotFound)
+
 				break
 			}
 
 			f, err := os.Open(layerPath)
 			if err != nil {
 				imageRes = getResult(imageName, tagName, errors.ErrBlobNotFound)
+
 				break
 			}
 
@@ -151,11 +150,13 @@ func checkIntegrity(ctx context.Context, imageName, tagName string, oci casext.E
 
 			if err != nil {
 				imageRes = getResult(imageName, tagName, errors.ErrBadBlobDigest)
+
 				break
 			}
 
 			if computedDigest != layer.Digest {
 				imageRes = getResult(imageName, tagName, errors.ErrBadBlobDigest)
+
 				break
 			}
 

@@ -11,28 +11,22 @@ import (
 	"os"
 	"path"
 	"strings"
+	"testing"
 	"time"
 
-	godigest "github.com/opencontainers/go-digest"
-	//"strings"
-
-	"testing"
-
+	storageDriver "github.com/docker/distribution/registry/storage/driver"
+	"github.com/docker/distribution/registry/storage/driver/factory"
+	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/rs/zerolog"
 	. "github.com/smartystreets/goconvey/convey"
+	"gopkg.in/resty.v1"
 	zerr "zotregistry.io/zot/errors"
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/s3"
-
-	// Add s3 support
-	storageDriver "github.com/docker/distribution/registry/storage/driver"
-	"github.com/docker/distribution/registry/storage/driver/factory"
-	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
-
-	"gopkg.in/resty.v1"
 )
 
 // nolint: gochecknoglobals

@@ -151,7 +151,6 @@ func (service searchService) getImagesByCveID(ctx context.Context, config search
 	result := &imagesForCve{}
 
 	err := service.makeGraphQLQuery(config, username, password, query, result)
-
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -206,7 +205,6 @@ func (service searchService) getImagesByDigest(ctx context.Context, config searc
 	result := &imagesForDigest{}
 
 	err := service.makeGraphQLQuery(config, username, password, query, result)
-
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -261,7 +259,6 @@ func (service searchService) getImageByNameAndCVEID(ctx context.Context, config 
 	result := &imagesForCve{}
 
 	err := service.makeGraphQLQuery(config, username, password, query, result)
-
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -319,7 +316,6 @@ func (service searchService) getCveByImage(ctx context.Context, config searchCon
 	result := &cveResult{}
 
 	err := service.makeGraphQLQuery(config, username, password, query, result)
-
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -404,7 +400,6 @@ func (service searchService) getFixedTagsForCVE(ctx context.Context, config sear
 	result := &fixedTags{}
 
 	err := service.makeGraphQLQuery(config, username, password, query, result)
-
 	if err != nil {
 		if isContextDone(ctx) {
 			return
@@ -495,15 +490,18 @@ type cveResult struct {
 	Errors []errorGraphQL `json:"errors"`
 	Data   cveData        `json:"data"`
 }
+
 type errorGraphQL struct {
 	Message string   `json:"message"`
 	Path    []string `json:"path"`
 }
+
 type packageList struct {
 	Name             string `json:"Name"`
 	InstalledVersion string `json:"InstalledVersion"`
 	FixedVersion     string `json:"FixedVersion"`
 }
+
 type cve struct {
 	ID          string        `json:"Id"`
 	Severity    string        `json:"Severity"`
@@ -511,10 +509,12 @@ type cve struct {
 	Description string        `json:"Description"`
 	PackageList []packageList `json:"PackageList"`
 }
+
 type cveListForImage struct {
 	Tag     string `json:"Tag"`
 	CVEList []cve  `json:"CVEList"`
 }
+
 type cveData struct {
 	CVEListForImage cveListForImage `json:"CVEListForImage"`
 }
@@ -555,9 +555,8 @@ func (cve cveResult) stringPlainText() (string, error) {
 }
 
 func (cve cveResult) stringJSON() (string, error) {
-	var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	body, err := json.MarshalIndent(cve.Data.CVEListForImage, "", "  ")
-
 	if err != nil {
 		return "", err
 	}
@@ -567,7 +566,6 @@ func (cve cveResult) stringJSON() (string, error) {
 
 func (cve cveResult) stringYAML() (string, error) {
 	body, err := yaml.Marshal(&cve.Data.CVEListForImage)
-
 	if err != nil {
 		return "", err
 	}
@@ -696,9 +694,8 @@ func (img imageStruct) stringPlainText() (string, error) {
 }
 
 func (img imageStruct) stringJSON() (string, error) {
-	var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
 	body, err := json.MarshalIndent(img, "", "  ")
-
 	if err != nil {
 		return "", err
 	}
@@ -708,7 +705,6 @@ func (img imageStruct) stringJSON() (string, error) {
 
 func (img imageStruct) stringYAML() (string, error) {
 	body, err := yaml.Marshal(&img)
-
 	if err != nil {
 		return "", err
 	}
@@ -744,7 +740,6 @@ func combineServerAndEndpointURL(serverURL, endPoint string) (string, error) {
 	}
 
 	newURL, err := url.Parse(serverURL)
-
 	if err != nil {
 		return "", zotErrors.ErrInvalidURL
 	}

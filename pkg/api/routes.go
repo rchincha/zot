@@ -12,6 +12,7 @@
 package api
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"io/ioutil"
@@ -27,11 +28,13 @@ import (
 	notreg "github.com/notaryproject/notation/pkg/registry"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
 	httpSwagger "github.com/swaggo/http-swagger"
-	"zotregistry.io/zot/errors"
+	zerr "zotregistry.io/zot/errors"
 	ext "zotregistry.io/zot/pkg/extensions"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
-	_ "zotregistry.io/zot/swagger" // as required by swaggo
+
+	// as required by swaggo.
+	_ "zotregistry.io/zot/swagger"
 )
 
 const (
@@ -221,12 +224,12 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 			pTags.Tags = tags[:n]
 		} else {
 			// next
-			i := -1
-			tag := ""
+			var i int
 			found := false
-			for i, tag = range tags {
+			for idx, tag := range tags {
 				if tag == last {
 					found = true
+					i = idx
 					break
 				}
 			}
@@ -289,10 +292,10 @@ func (rh *RouteHandler) CheckManifest(w http.ResponseWriter, r *http.Request) {
 	content, digest, mediaType, err := getImageManifest(rh, is, name, reference)
 	if err != nil {
 		switch err {
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"reference": reference})))
-		case errors.ErrManifestNotFound:
+		case zerr.ErrManifestNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
 		default:
@@ -345,16 +348,15 @@ func (rh *RouteHandler) GetManifest(w http.ResponseWriter, r *http.Request) {
 	}
 
 	content, digest, mediaType, err := getImageManifest(rh, is, name, reference)
-
 	if err != nil {
 		switch err {
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrRepoBadVersion:
+		case zerr.ErrRepoBadVersion:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrManifestNotFound:
+		case zerr.ErrManifestNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
 		default:
@@ -416,16 +418,16 @@ func (rh *RouteHandler) UpdateManifest(w http.ResponseWriter, r *http.Request) {
 	digest, err := is.PutImageManifest(name, reference, mediaType, body)
 	if err != nil {
 		switch err {
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrManifestNotFound:
+		case zerr.ErrManifestNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
-		case errors.ErrBadManifest:
+		case zerr.ErrBadManifest:
 			WriteJSON(w, http.StatusBadRequest,
 				NewErrorList(NewError(MANIFEST_INVALID, map[string]string{"reference": reference})))
-		case errors.ErrBlobNotFound:
+		case zerr.ErrBlobNotFound:
 			WriteJSON(w, http.StatusBadRequest,
 				NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"blob": digest})))
 		default:
@@ -471,13 +473,13 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 	err := is.DeleteImageManifest(name, reference)
 	if err != nil {
 		switch err {
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusBadRequest,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrManifestNotFound:
+		case zerr.ErrManifestNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(MANIFEST_UNKNOWN, map[string]string{"reference": reference})))
-		case errors.ErrBadManifest:
+		case zerr.ErrBadManifest:
 			WriteJSON(w, http.StatusBadRequest,
 				NewErrorList(NewError(UNSUPPORTED, map[string]string{"reference": reference})))
 		default:
@@ -501,8 +503,8 @@ func (rh *RouteHandler) DeleteManifest(w http.ResponseWriter, r *http.Request) {
 // @Success 200 {object} api.ImageManifest
 // @Header  200 {object} api.DistContentDigestKey
 // @Router /v2/{name}/blobs/{digest} [head].
-func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
+func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
@@ -521,11 +523,11 @@ func (rh *RouteHandler) CheckBlob(w http.ResponseWriter, r *http.Request) {
 	ok, blen, err := is.CheckBlob(name, digest)
 	if err != nil {
 		switch err {
-		case errors.ErrBadBlobDigest:
+		case zerr.ErrBadBlobDigest:
 			WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrBlobNotFound:
+		case zerr.ErrBlobNotFound:
 			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"digest": digest})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
@@ -577,11 +579,11 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 	br, blen, err := is.GetBlob(name, digest, mediaType)
 	if err != nil {
 		switch err {
-		case errors.ErrBadBlobDigest:
+		case zerr.ErrBadBlobDigest:
 			WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrBlobNotFound:
+		case zerr.ErrBlobNotFound:
 			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"digest": digest})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
@@ -628,11 +630,11 @@ func (rh *RouteHandler) DeleteBlob(w http.ResponseWriter, r *http.Request) {
 	err := is.DeleteBlob(name, digest)
 	if err != nil {
 		switch err {
-		case errors.ErrBadBlobDigest:
+		case zerr.ErrBadBlobDigest:
 			WriteJSON(w, http.StatusBadRequest, NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrBlobNotFound:
+		case zerr.ErrBlobNotFound:
 			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(BLOB_UNKNOWN, map[string]string{"digest": digest})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
@@ -689,7 +691,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 			u, err := is.NewBlobUpload(name)
 			if err != nil {
 				switch err {
-				case errors.ErrRepoNotFound:
+				case zerr.ErrRepoNotFound:
 					WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 				default:
 					rh.c.Log.Error().Err(err).Msg("unexpected error")
@@ -773,7 +775,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 	u, err := is.NewBlobUpload(name)
 	if err != nil {
 		switch err {
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound, NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
 		default:
 			rh.c.Log.Error().Err(err).Msg("unexpected error")
@@ -822,16 +824,16 @@ func (rh *RouteHandler) GetBlobUpload(w http.ResponseWriter, r *http.Request) {
 	size, err := is.GetBlobUpload(name, sessionID)
 	if err != nil {
 		switch err {
-		case errors.ErrBadUploadRange:
+		case zerr.ErrBadUploadRange:
 			WriteJSON(w, http.StatusBadRequest,
 				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
-		case errors.ErrBadBlobDigest:
+		case zerr.ErrBadBlobDigest:
 			WriteJSON(w, http.StatusBadRequest,
 				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrUploadNotFound:
+		case zerr.ErrUploadNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		default:
@@ -926,13 +928,13 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 			}
 
 			w.WriteHeader(http.StatusInternalServerError)
-		case errors.ErrBadUploadRange:
+		case zerr.ErrBadUploadRange:
 			WriteJSON(w, http.StatusRequestedRangeNotSatisfiable,
 				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrUploadNotFound:
+		case zerr.ErrUploadNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		default:
@@ -964,8 +966,8 @@ func (rh *RouteHandler) PatchBlobUpload(w http.ResponseWriter, r *http.Request) 
 // @Failure 404 {string} string "not found"
 // @Failure 500 {string} string "internal server error"
 // @Router /v2/{name}/blobs/uploads/{session_id} [put].
-func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request) {
-	vars := mux.Vars(r)
+func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, request *http.Request) {
+	vars := mux.Vars(request)
 	name, ok := vars["name"]
 
 	if !ok || name == "" {
@@ -981,7 +983,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	digests, ok := r.URL.Query()["digest"]
+	digests, ok := request.URL.Query()["digest"]
 	if !ok || len(digests) != 1 {
 		w.WriteHeader(http.StatusBadRequest)
 		return
@@ -989,18 +991,18 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 
 	digest := digests[0]
 
-	rh.c.Log.Info().Int64("r.ContentLength", r.ContentLength).Msg("DEBUG")
+	rh.c.Log.Info().Int64("r.ContentLength", request.ContentLength).Msg("DEBUG")
 
 	contentPresent := true
 
-	contentLen, err := strconv.ParseInt(r.Header.Get("Content-Length"), 10, 64)
+	contentLen, err := strconv.ParseInt(request.Header.Get("Content-Length"), 10, 64)
 	if err != nil {
 		contentPresent = false
 	}
 
 	contentRangePresent := true
 
-	if r.Header.Get("Content-Range") == "" {
+	if request.Header.Get("Content-Range") == "" {
 		contentRangePresent = false
 	}
 
@@ -1014,7 +1016,7 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 	var from, to int64
 
 	if contentPresent {
-		contentRange := r.Header.Get("Content-Range")
+		contentRange := request.Header.Get("Content-Range")
 		if contentRange == "" { // monolithic upload
 			from = 0
 
@@ -1023,12 +1025,12 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 			}
 
 			to = contentLen
-		} else if from, to, err = getContentRange(r); err != nil { // finish chunked upload
+		} else if from, to, err = getContentRange(request); err != nil { // finish chunked upload
 			w.WriteHeader(http.StatusRequestedRangeNotSatisfiable)
 			return
 		}
 
-		_, err = is.PutBlobChunk(name, sessionID, from, to, r.Body)
+		_, err = is.PutBlobChunk(name, sessionID, from, to, request.Body)
 		if err != nil {
 			switch err {
 			case io.ErrUnexpectedEOF:
@@ -1039,13 +1041,13 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 				}
 
 				w.WriteHeader(http.StatusInternalServerError)
-			case errors.ErrBadUploadRange:
+			case zerr.ErrBadUploadRange:
 				WriteJSON(w, http.StatusBadRequest,
 					NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
-			case errors.ErrRepoNotFound:
+			case zerr.ErrRepoNotFound:
 				WriteJSON(w, http.StatusNotFound,
 					NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-			case errors.ErrUploadNotFound:
+			case zerr.ErrUploadNotFound:
 				WriteJSON(w, http.StatusNotFound,
 					NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 			default:
@@ -1059,18 +1061,18 @@ func (rh *RouteHandler) UpdateBlobUpload(w http.ResponseWriter, r *http.Request)
 
 finish:
 	// blob chunks already transferred, just finish
-	if err := is.FinishBlobUpload(name, sessionID, r.Body, digest); err != nil {
+	if err := is.FinishBlobUpload(name, sessionID, request.Body, digest); err != nil {
 		switch err {
-		case errors.ErrBadBlobDigest:
+		case zerr.ErrBadBlobDigest:
 			WriteJSON(w, http.StatusBadRequest,
 				NewErrorList(NewError(DIGEST_INVALID, map[string]string{"digest": digest})))
-		case errors.ErrBadUploadRange:
+		case zerr.ErrBadUploadRange:
 			WriteJSON(w, http.StatusBadRequest,
 				NewErrorList(NewError(BLOB_UPLOAD_INVALID, map[string]string{"session_id": sessionID})))
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrUploadNotFound:
+		case zerr.ErrUploadNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		default:
@@ -1117,10 +1119,10 @@ func (rh *RouteHandler) DeleteBlobUpload(w http.ResponseWriter, r *http.Request)
 
 	if err := is.DeleteBlobUpload(name, sessionID); err != nil {
 		switch err {
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(NAME_UNKNOWN, map[string]string{"name": name})))
-		case errors.ErrUploadNotFound:
+		case zerr.ErrUploadNotFound:
 			WriteJSON(w, http.StatusNotFound,
 				NewErrorList(NewError(BLOB_UPLOAD_UNKNOWN, map[string]string{"session_id": sessionID})))
 		default:
@@ -1203,23 +1205,23 @@ func getContentRange(r *http.Request) (int64 /* from */, int64 /* to */, error) 
 
 	from, err := strconv.ParseInt(tokens[0], 10, 64)
 	if err != nil {
-		return -1, -1, errors.ErrBadUploadRange
+		return -1, -1, zerr.ErrBadUploadRange
 	}
 
 	to, err := strconv.ParseInt(tokens[1], 10, 64)
 	if err != nil {
-		return -1, -1, errors.ErrBadUploadRange
+		return -1, -1, zerr.ErrBadUploadRange
 	}
 
 	if from > to {
-		return -1, -1, errors.ErrBadUploadRange
+		return -1, -1, zerr.ErrBadUploadRange
 	}
 
 	return from, to, nil
 }
 
 func WriteJSON(w http.ResponseWriter, status int, data interface{}) {
-	var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	body, err := json.Marshal(data)
 	if err != nil {
@@ -1235,17 +1237,17 @@ func WriteData(w http.ResponseWriter, status int, mediaType string, data []byte)
 	_, _ = w.Write(data)
 }
 
-func WriteDataFromReader(w http.ResponseWriter, status int, length int64, mediaType string,
+func WriteDataFromReader(respWriter http.ResponseWriter, status int, length int64, mediaType string,
 	reader io.Reader, logger log.Logger) {
-	w.Header().Set("Content-Type", mediaType)
-	w.Header().Set("Content-Length", strconv.FormatInt(length, 10))
-	w.WriteHeader(status)
+	respWriter.Header().Set("Content-Type", mediaType)
+	respWriter.Header().Set("Content-Length", strconv.FormatInt(length, 10))
+	respWriter.WriteHeader(status)
 
 	const maxSize = 10 * 1024 * 1024
 
 	for {
-		_, err := io.CopyN(w, reader, maxSize)
-		if err == io.EOF {
+		_, err := io.CopyN(respWriter, reader, maxSize)
+		if errors.Is(err, io.EOF) {
 			break
 		} else if err != nil {
 			// other kinds of intermittent errors can occur, e.g, io.ErrShortWrite
@@ -1264,10 +1266,9 @@ func (rh *RouteHandler) getImageStore(name string) storage.ImageStore {
 func getImageManifest(rh *RouteHandler, is storage.ImageStore, name,
 	reference string) ([]byte, string, string, error) {
 	content, digest, mediaType, err := is.GetImageManifest(name, reference)
-
 	if err != nil {
 		switch err {
-		case errors.ErrRepoNotFound:
+		case zerr.ErrRepoNotFound:
 			if rh.c.Config.Extensions != nil && rh.c.Config.Extensions.Sync != nil {
 				rh.c.Log.Info().Msgf("image not found, trying to get image %s:%s by syncing on demand", name, reference)
 
@@ -1279,7 +1280,7 @@ func getImageManifest(rh *RouteHandler, is storage.ImageStore, name,
 				}
 			}
 
-		case errors.ErrManifestNotFound:
+		case zerr.ErrManifestNotFound:
 			if rh.c.Config.Extensions != nil && rh.c.Config.Extensions.Sync != nil {
 				rh.c.Log.Info().Msgf("manifest not found, trying to get image %s:%s by syncing on demand", name, reference)
 

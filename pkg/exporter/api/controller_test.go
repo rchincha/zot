@@ -5,10 +5,11 @@ package api_test
 
 import (
 	"context"
+	"crypto/rand"
 	"errors"
 	"fmt"
 	"io/ioutil"
-	"math/rand"
+	"math/big"
 	"net/http"
 	"os"
 	"strings"
@@ -33,8 +34,12 @@ const (
 )
 
 func getRandomLatencyN(maxNanoSeconds int64) time.Duration {
-	rand.Seed(time.Now().UnixNano())
-	return time.Duration(rand.Int63n(maxNanoSeconds))
+	nBig, err := rand.Int(rand.Reader, big.NewInt(maxNanoSeconds))
+	if err != nil {
+		panic(err)
+	}
+
+	return time.Duration(nBig.Int64())
 }
 
 func getRandomLatency() time.Duration {
@@ -163,7 +168,7 @@ func TestNewExporter(t *testing.T) {
 				})
 
 				Convey("Collecting data: Test init value & that increment works on Counters", func() {
-					//Testing initial value of the counter to be 1 after first incrementation call
+					// Testing initial value of the counter to be 1 after first incrementation call
 					monitoring.IncUploadCounter(serverController.Metrics, "testrepo")
 					time.Sleep(SleepTime)
 
@@ -183,7 +188,7 @@ func TestNewExporter(t *testing.T) {
 
 					So(isChannelDrained(ch), ShouldEqual, true)
 
-					//Testing that counter is incremented by 1
+					// Testing that counter is incremented by 1
 					monitoring.IncUploadCounter(serverController.Metrics, "testrepo")
 					time.Sleep(SleepTime)
 
@@ -203,7 +208,11 @@ func TestNewExporter(t *testing.T) {
 					So(isChannelDrained(ch), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test that concurent Counter increment requests works properly", func() {
-					reqsSize := rand.Intn(1000)
+					nBig, err := rand.Int(rand.Reader, big.NewInt(1000))
+					if err != nil {
+						panic(err)
+					}
+					reqsSize := int(nBig.Int64())
 					for i := 0; i < reqsSize; i++ {
 						monitoring.IncDownloadCounter(serverController.Metrics, "dummyrepo")
 					}
@@ -218,21 +227,21 @@ func TestNewExporter(t *testing.T) {
 					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_repo_downloads_total"].String())
 
 					var metric dto.Metric
-					err := pm.Write(&metric)
+					err = pm.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, reqsSize)
 
 					So(isChannelDrained(ch), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init value & that observe works on Summaries", func() {
-					//Testing initial value of the summary counter to be 1 after first observation call
+					// Testing initial value of the summary counter to be 1 after first observation call
 					var latency1, latency2 time.Duration
 					latency1 = getRandomLatency()
 					monitoring.ObserveHTTPRepoLatency(serverController.Metrics, "/v2/testrepo/blogs/dummydigest", latency1)
 					time.Sleep(SleepTime)
 
 					go func() {
-						//this blocks
+						// this blocks
 						zc.Collect(ch)
 					}()
 					readDefaultMetrics(zc, ch)
@@ -254,7 +263,7 @@ func TestNewExporter(t *testing.T) {
 
 					So(isChannelDrained(ch), ShouldEqual, true)
 
-					//Testing that summary counter is incremented by 1 and summary sum is  properly updated
+					// Testing that summary counter is incremented by 1 and summary sum is  properly updated
 					latency2 = getRandomLatency()
 					monitoring.ObserveHTTPRepoLatency(serverController.Metrics, "/v2/testrepo/blogs/dummydigest", latency2)
 					time.Sleep(SleepTime)
@@ -283,7 +292,11 @@ func TestNewExporter(t *testing.T) {
 				})
 				Convey("Collecting data: Test that concurent Summary observation requests works properly", func() {
 					var latencySum float64
-					reqsSize := rand.Intn(1000)
+					nBig, err := rand.Int(rand.Reader, big.NewInt(1000))
+					if err != nil {
+						panic(err)
+					}
+					reqsSize := int(nBig.Int64())
 					for i := 0; i < reqsSize; i++ {
 						latency := getRandomLatency()
 						latencySum += latency.Seconds()
@@ -301,7 +314,7 @@ func TestNewExporter(t *testing.T) {
 					So(pm.Desc().String(), ShouldEqual, zc.MetricsDesc["zot_http_repo_latency_seconds_count"].String())
 
 					var metric dto.Metric
-					err := pm.Write(&metric)
+					err = pm.Write(&metric)
 					So(err, ShouldBeNil)
 					So(*metric.Counter.Value, ShouldEqual, reqsSize)
 
@@ -315,13 +328,13 @@ func TestNewExporter(t *testing.T) {
 					So(isChannelDrained(ch), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init value & that observe works on Histogram buckets", func() {
-					//Testing initial value of the histogram counter to be 1 after first observation call
+					// Testing initial value of the histogram counter to be 1 after first observation call
 					latency := getRandomLatency()
 					monitoring.ObserveHTTPMethodLatency(serverController.Metrics, "GET", latency)
 					time.Sleep(SleepTime)
 
 					go func() {
-						//this blocks
+						// this blocks
 						zc.Collect(ch)
 					}()
 					readDefaultMetrics(zc, ch)
@@ -357,7 +370,7 @@ func TestNewExporter(t *testing.T) {
 					So(isChannelDrained(ch), ShouldEqual, true)
 				})
 				Convey("Collecting data: Test init Histogram buckets \n", func() {
-					//Generate a random  latency within each bucket and finally test
+					// Generate a random  latency within each bucket and finally test
 					// that "higher" rank bucket counter is incremented by 1
 					var latencySum float64
 
@@ -365,7 +378,7 @@ func TestNewExporter(t *testing.T) {
 					for i, fvalue := range dBuckets {
 						var latency time.Duration
 						if i == 0 {
-							//first bucket value
+							// first bucket value
 							latency = getRandomLatencyN(int64(fvalue * SecondToNanoseconds))
 						} else {
 							pvalue := dBuckets[i-1] // previous bucket value
@@ -378,7 +391,7 @@ func TestNewExporter(t *testing.T) {
 					time.Sleep(SleepTime)
 
 					go func() {
-						//this blocks
+						// this blocks
 						zc.Collect(ch)
 					}()
 					readDefaultMetrics(zc, ch)
@@ -415,13 +428,17 @@ func TestNewExporter(t *testing.T) {
 				Convey("Concurrent metrics scrape", func() {
 					var wg sync.WaitGroup
 
-					workersSize := rand.Intn(100)
+					nBig, err := rand.Int(rand.Reader, big.NewInt(100))
+					if err != nil {
+						panic(err)
+					}
+					workersSize := int(nBig.Int64())
 					for i := 0; i < workersSize; i++ {
 						wg.Add(1)
 						go func() {
 							defer wg.Done()
 							m := serverController.Metrics.ReceiveMetrics()
-							var json = jsoniter.ConfigCompatibleWithStandardLibrary
+							json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 							_, err := json.Marshal(m)
 							if err != nil {

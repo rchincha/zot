@@ -21,7 +21,7 @@ func NewCveCommand(searchService SearchService) *cobra.Command {
 
 	var isSpinner, verifyTLS, fixedFlag, verbose bool
 
-	var cveCmd = &cobra.Command{
+	cveCmd := &cobra.Command{
 		Use:   "cve [config-name]",
 		Short: "Lookup CVEs in images hosted on zot",
 		Long:  `List CVEs (Common Vulnerabilities and Exposures) of images hosted on a zot instance`,

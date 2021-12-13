@@ -25,7 +25,7 @@ func NewConfigCommand() *cobra.Command {
 
 	var isReset bool
 
-	var configCmd = &cobra.Command{
+	configCmd := &cobra.Command{
 		Use:     "config <config-name> [variable] [value]",
 		Example: examples,
 		Short:   "Configure zot CLI",
@@ -77,7 +77,7 @@ func NewConfigCommand() *cobra.Command {
 				}
 				fmt.Fprintln(cmd.OutOrStdout(), res)
 			case threeArgs:
-				//zot config <name> <key> <value>
+				// zot config <name> <key> <value>
 				if err := setConfigValue(configPath, args[0], args[1], args[2]); err != nil {
 					return err
 				}
@@ -99,7 +99,7 @@ func NewConfigCommand() *cobra.Command {
 }
 
 func NewConfigAddCommand() *cobra.Command {
-	var configAddCmd = &cobra.Command{
+	configAddCmd := &cobra.Command{
 		Use:   "add <config-name> <url>",
 		Short: "Add configuration for a zot URL",
 		Long:  `Configure CLI for interaction with a zot server`,
@@ -125,7 +125,7 @@ func NewConfigAddCommand() *cobra.Command {
 }
 
 func getConfigMapFromFile(filePath string) ([]interface{}, error) {
-	file, err := os.OpenFile(filePath, os.O_RDONLY|os.O_CREATE, 0644)
+	file, err := os.OpenFile(filePath, os.O_RDONLY|os.O_CREATE, 0o644)
 	if err != nil {
 		return nil, err
 	}
@@ -139,7 +139,7 @@ func getConfigMapFromFile(filePath string) ([]interface{}, error) {
 
 	var jsonMap map[string]interface{}
 
-	var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	_ = json.Unmarshal(data, &jsonMap)
 
@@ -151,17 +151,16 @@ func getConfigMapFromFile(filePath string) ([]interface{}, error) {
 }
 
 func saveConfigMapToFile(filePath string, configMap []interface{}) error {
-	var json = jsoniter.ConfigCompatibleWithStandardLibrary
+	json := jsoniter.ConfigCompatibleWithStandardLibrary
 
 	listMap := make(map[string]interface{})
 	listMap["configs"] = configMap
 	marshalled, err := json.Marshal(&listMap)
-
 	if err != nil {
 		return err
 	}
 
-	if err := ioutil.WriteFile(filePath, marshalled, 0600); err != nil {
+	if err := ioutil.WriteFile(filePath, marshalled, 0o600); err != nil {
 		return err
 	}
 
@@ -400,6 +399,4 @@ Useful variables:
 	verifyTLSConfig   = "verify-tls"
 )
 
-var (
-	ErrEmptyJSON = errors.New("cli: config json is empty")
-)
+var ErrEmptyJSON = errors.New("cli: config json is empty")

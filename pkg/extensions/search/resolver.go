@@ -200,7 +200,7 @@ func (r *queryResolver) ImageListForCve(ctx context.Context, id string) ([]*ImgR
 	return finalCveResult, nil
 }
 
-func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStore storage.ImageStore,
+func (r *queryResolver) getImageListForCVE(repoList []string, cveID string, imgStore storage.ImageStore,
 	trivyCtx *cveinfo.TrivyCtx) ([]*ImgResultForCve, error) {
 	cveResult := []*ImgResultForCve{}
 
@@ -209,7 +209,7 @@ func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStor
 
 		name := repo
 
-		tags, err := r.cveInfo.GetImageListForCVE(repo, id, imgStore, trivyCtx)
+		tags, err := r.cveInfo.GetImageListForCVE(repo, cveID, imgStore, trivyCtx)
 		if err != nil {
 			r.log.Error().Err(err).Msg("error getting tag")
 
@@ -224,7 +224,7 @@ func (r *queryResolver) getImageListForCVE(repoList []string, id string, imgStor
 	return cveResult, nil
 }
 
-func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, image string) (*ImgResultForFixedCve, error) { // nolint: lll
+func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, cveID string, image string) (*ImgResultForFixedCve, error) { // nolint: lll
 	imgResultForFixedCVE := &ImgResultForFixedCve{}
 
 	r.log.Info().Str("image", image).Msg("extracting list of tags available in image")
@@ -270,7 +270,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 
 		for _, result := range report.Results {
 			for _, vulnerability := range result.Vulnerabilities {
-				if vulnerability.VulnerabilityID == id {
+				if vulnerability.VulnerabilityID == cveID {
 					hasCVE = true
 
 					break
@@ -292,7 +292,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 
 		finalTagList = getGraphqlCompatibleTags(fixedTags)
 	} else {
-		r.log.Info().Str("image", image).Str("cve-id", id).Msg("image does not contain any tag that have given cve")
+		r.log.Info().Str("image", image).Str("cve-id", cveID).Msg("image does not contain any tag that have given cve")
 
 		finalTagList = getGraphqlCompatibleTags(tagsInfo)
 	}
@@ -302,7 +302,7 @@ func (r *queryResolver) ImageListWithCVEFixed(ctx context.Context, id string, im
 	return imgResultForFixedCVE, nil
 }
 
-func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*ImgResultForDigest, error) {
+func (r *queryResolver) ImageListForDigest(ctx context.Context, digestID string) ([]*ImgResultForDigest, error) {
 	imgResultForDigest := []*ImgResultForDigest{}
 
 	r.log.Info().Msg("extracting repositories")
@@ -318,7 +318,7 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*I
 
 	r.log.Info().Msg("scanning each global repository")
 
-	partialImgResultForDigest, err := r.getImageListForDigest(repoList, id)
+	partialImgResultForDigest, err := r.getImageListForDigest(repoList, digestID)
 	if err != nil {
 		r.log.Error().Err(err).Msg("unable to get image and tag list for global repositories")
 
@@ -336,7 +336,7 @@ func (r *queryResolver) ImageListForDigest(ctx context.Context, id string) ([]*I
 			return imgResultForDigest, err
 		}
 
-		partialImgResultForDigest, err = r.getImageListForDigest(subRepoList, id)
+		partialImgResultForDigest, err = r.getImageListForDigest(subRepoList, digestID)
 		if err != nil {
 			r.log.Error().Err(err).Msg("unable to get image and tag list for sub-repositories")
 
