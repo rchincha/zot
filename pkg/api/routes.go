@@ -221,12 +221,12 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 			pTags.Tags = tags[:n]
 		} else {
 			// next
-			i := -1
-			tag := ""
+			var i int
 			found := false
-			for i, tag = range tags {
+			for idx, tag := range tags {
 				if tag == last {
 					found = true
+					i = idx
 					break
 				}
 			}

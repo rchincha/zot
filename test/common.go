@@ -71,16 +71,16 @@ func Location(baseURL string, resp *resty.Response) string {
 func CopyFiles(sourceDir string, destDir string) error {
 	sourceMeta, err := os.Stat(sourceDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("CopyFiles os.Stat failed: %w", err)
 	}
 
 	if err := os.MkdirAll(destDir, sourceMeta.Mode()); err != nil {
-		return err
+		return fmt.Errorf("CopyFiles os.MkdirAll failed: %w", err)
 	}
 
 	files, err := ioutil.ReadDir(sourceDir)
 	if err != nil {
-		return err
+		return fmt.Errorf("CopyFiles ioutil.ReadDir failed: %w", err)
 	}
 
 	for _, file := range files {
@@ -94,18 +94,18 @@ func CopyFiles(sourceDir string, destDir string) error {
 		} else {
 			sourceFile, err := os.Open(sourceFilePath)
 			if err != nil {
-				return err
+				return fmt.Errorf("CopyFiles os.Open failed: %w", err)
 			}
 			defer sourceFile.Close()
 
 			destFile, err := os.Create(destFilePath)
 			if err != nil {
-				return err
+				return fmt.Errorf("CopyFiles os.Create failed: %w", err)
 			}
 			defer destFile.Close()
 
 			if _, err = io.Copy(destFile, sourceFile); err != nil {
-				return err
+				return fmt.Errorf("io.Copy failed: %w", err)
 			}
 		}
 	}

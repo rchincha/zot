@@ -2,16 +2,16 @@ package storage_test
 
 import (
 	"bytes"
+	"crypto/rand"
 	_ "crypto/sha256"
 	"encoding/json"
 	"io/ioutil"
-	"math/rand"
+	"math/big"
 	"os"
 	"os/exec"
 	"path"
 	"strings"
 	"testing"
-	"time"
 
 	godigest "github.com/opencontainers/go-digest"
 	ispec "github.com/opencontainers/image-spec/specs-go/v1"
@@ -704,10 +704,12 @@ func TestHardLink(t *testing.T) {
 	Convey("Test that ValidateHardLink creates rootDir if it does not exist", t, func() {
 		var randomDir string
 
-		rand.Seed(time.Now().UnixNano())
 		for {
-			randomLen := rand.Intn(100)
-			randomDir = "/tmp/" + randSeq(randomLen)
+			nBig, err := rand.Int(rand.Reader, big.NewInt(100))
+			if err != nil {
+				panic(err)
+			}
+			randomDir = "/tmp/" + randSeq(int(nBig.Int64()))
 
 			if _, err := os.Stat(randomDir); os.IsNotExist(err) {
 				break
@@ -769,7 +771,11 @@ func randSeq(n int) string {
 
 	b := make([]rune, n)
 	for i := range b {
-		b[i] = letters[rand.Intn(len(letters))]
+		nBig, err := rand.Int(rand.Reader, big.NewInt(int64(len(letters))))
+		if err != nil {
+			panic(err)
+		}
+		b[i] = letters[int(nBig.Int64())]
 	}
 
 	return string(b)

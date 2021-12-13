@@ -9,10 +9,9 @@ import (
 	"testing"
 	"time"
 
-	"gopkg.in/resty.v1"
-
 	. "github.com/smartystreets/goconvey/convey"
 	"github.com/spf13/viper"
+	"gopkg.in/resty.v1"
 	"zotregistry.io/zot/pkg/api"
 	"zotregistry.io/zot/pkg/api/config"
 	"zotregistry.io/zot/pkg/cli"

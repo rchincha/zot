@@ -11,6 +11,7 @@ import (
 	goSync "sync"
 	"time"
 
+	"github.com/docker/distribution/registry/storage/driver/factory"
 	"github.com/gorilla/handlers"
 	"github.com/gorilla/mux"
 	"zotregistry.io/zot/errors"
@@ -20,8 +21,6 @@ import (
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	"zotregistry.io/zot/pkg/storage/s3"
-
-	"github.com/docker/distribution/registry/storage/driver/factory"
 )
 
 const (
@@ -147,7 +146,7 @@ func (c *Controller) Run() error {
 				PreferServerCipherSuites: true,
 				MinVersion:               tls.VersionTLS12,
 			}
-			server.TLSConfig.BuildNameToCertificate() // nolint: staticcheck
+			server.TLSConfig.BuildNameToCertificate()
 		}
 
 		return server.ServeTLS(l, c.Config.HTTP.TLS.Cert, c.Config.HTTP.TLS.Key)

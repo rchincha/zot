@@ -60,7 +60,6 @@ func SessionLogger(c *Controller) mux.MiddlewareFunc {
 			clientIP := r.RemoteAddr
 			method := r.Method
 			headers := map[string][]string{}
-			username := ""
 			log := l.Info()
 			for key, value := range r.Header {
 				if key == "Authorization" { // anonymize from logs
@@ -71,8 +70,7 @@ func SessionLogger(c *Controller) mux.MiddlewareFunc {
 							pair := strings.SplitN(string(b), ":", 2)
 							// nolint:gomnd
 							if len(pair) == 2 {
-								username = pair[0]
-								log = log.Str("username", username)
+								log = log.Str("username", pair[0])
 							}
 						}
 					}

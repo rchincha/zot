@@ -12,10 +12,10 @@ import (
 	"strings"
 	"sync"
 
-	// Add s3 support
+	// Add s3 support.
 	storageDriver "github.com/docker/distribution/registry/storage/driver"
 
-	// Load s3 driver
+	// Load s3 driver.
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
 	"github.com/notaryproject/notation-go-lib"

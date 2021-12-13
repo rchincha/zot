@@ -1,6 +1,7 @@
 //go:build minimal
 // +build minimal
 
+// nolint: varnamelen
 package api
 
 import (

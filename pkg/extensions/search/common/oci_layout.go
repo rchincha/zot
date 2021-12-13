@@ -3,11 +3,10 @@ package common
 
 import (
 	"encoding/json"
+	goerrors "errors"
 	"path"
 	"strings"
 	"time"
-
-	goerrors "errors"
 
 	v1 "github.com/google/go-containerregistry/pkg/v1"
 	"github.com/google/go-containerregistry/pkg/v1/types"
