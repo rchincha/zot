@@ -1,3 +1,4 @@
+// nolint: varnamelen
 package storage
 
 import (
@@ -138,15 +139,15 @@ func checkIntegrity(ctx context.Context, imageName, tagName string, oci casext.E
 				break
 			}
 
-			f, err := os.Open(layerPath)
+			file, err := os.Open(layerPath)
 			if err != nil {
 				imageRes = getResult(imageName, tagName, errors.ErrBlobNotFound)
 
 				break
 			}
 
-			computedDigest, err := godigest.FromReader(f)
-			f.Close()
+			computedDigest, err := godigest.FromReader(file)
+			file.Close()
 
 			if err != nil {
 				imageRes = getResult(imageName, tagName, errors.ErrBadBlobDigest)

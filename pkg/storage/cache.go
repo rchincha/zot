@@ -164,6 +164,7 @@ func (c *Cache) HasBlob(digest string, blob string) bool {
 	return true
 }
 
+// nolint: varnamelen
 func (c *Cache) DeleteBlob(digest string, path string) error {
 	// use only relative (to rootDir) paths on blobs
 	relp, err := filepath.Rel(c.rootDir, path)
@@ -188,6 +189,7 @@ func (c *Cache) DeleteBlob(digest string, path string) error {
 
 		if err := b.Delete([]byte(relp)); err != nil {
 			c.log.Error().Err(err).Str("digest", digest).Str("path", relp).Msg("unable to delete")
+
 			return err
 		}
 
@@ -198,6 +200,7 @@ func (c *Cache) DeleteBlob(digest string, path string) error {
 			c.log.Debug().Str("digest", digest).Str("path", relp).Msg("deleting empty bucket")
 			if err := root.DeleteBucket([]byte(digest)); err != nil {
 				c.log.Error().Err(err).Str("digest", digest).Str("path", relp).Msg("unable to delete")
+
 				return err
 			}
 		}

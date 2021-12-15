@@ -1,3 +1,4 @@
+// nolint: gochecknoglobals,varnamelen,predeclared
 package s3_test
 
 import (
@@ -29,7 +30,6 @@ import (
 	"zotregistry.io/zot/pkg/storage/s3"
 )
 
-// nolint: gochecknoglobals
 var (
 	testImage      = "test"
 	fileWriterSize = 12
@@ -43,6 +43,8 @@ func cleanupStorage(store storageDriver.StorageDriver, name string) {
 }
 
 func skipIt(t *testing.T) {
+	t.Helper()
+
 	if os.Getenv("S3MOCK_ENDPOINT") == "" {
 		t.Skip("Skipping testing without AWS S3 mock server")
 	}

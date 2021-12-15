@@ -1,3 +1,4 @@
+// nolint: varnamelen
 package storage_test
 
 import (
@@ -14,10 +15,7 @@ import (
 	"testing"
 
 	// Add s3 support.
-	storageDriver "github.com/docker/distribution/registry/storage/driver"
-
-	// Add s3 support.
-	storageDriver "github.com/docker/distribution/registry/storage/driver"
+	"github.com/docker/distribution/registry/storage/driver"
 	"github.com/docker/distribution/registry/storage/driver/factory"
 	_ "github.com/docker/distribution/registry/storage/driver/s3-aws"
 	guuid "github.com/gofrs/uuid"
@@ -32,17 +30,19 @@ import (
 	"zotregistry.io/zot/pkg/storage/s3"
 )
 
-func cleanupStorage(store storageDriver.StorageDriver, name string) {
+func cleanupStorage(store driver.StorageDriver, name string) {
 	_ = store.Delete(context.Background(), name)
 }
 
 func skipIt(t *testing.T) {
+	t.Helper()
+
 	if os.Getenv("S3MOCK_ENDPOINT") == "" {
 		t.Skip("Skipping testing without AWS S3 mock server")
 	}
 }
 
-func createObjectsStore(rootDir string) (storageDriver.StorageDriver, storage.ImageStore, error) {
+func createObjectsStore(rootDir string) (driver.StorageDriver, storage.ImageStore, error) {
 	bucket := "zot-storage-test"
 	endpoint := os.Getenv("S3MOCK_ENDPOINT")
 	storageDriverParams := map[string]interface{}{

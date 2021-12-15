@@ -1,3 +1,4 @@
+// nolint: varnamelen
 package search
 
 //go:generate go run github.com/99designs/gqlgen

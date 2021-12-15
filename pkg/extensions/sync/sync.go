@@ -439,6 +439,7 @@ func getLocalContexts(log log.Logger) (*types.SystemContext, *signature.PolicyCo
 	return localCtx, policyContext, nil
 }
 
+// nolint: varnamelen
 func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGroup, logger log.Logger) error {
 	var credentialsFile CredentialsFile
 
@@ -467,12 +468,14 @@ func Run(cfg Config, storeController storage.StoreController, wg *goSync.WaitGro
 		// if content not provided, don't run periodically sync
 		if len(regCfg.Content) == 0 {
 			logger.Info().Msgf("sync config content not configured for %s, will not run periodically sync", regCfg.URL)
+
 			continue
 		}
 
 		// if pollInterval is not provided, don't run periodically sync
 		if regCfg.PollInterval == 0 {
 			logger.Warn().Msgf("sync config PollInterval not configured for %s, will not run periodically sync", regCfg.URL)
+
 			continue
 		}
 

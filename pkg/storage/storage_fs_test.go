@@ -1,3 +1,4 @@
+// nolint: varnamelen
 package storage_test
 
 import (
@@ -163,8 +164,7 @@ func TestDedupeLinks(t *testing.T) {
 	il := storage.NewImageStore(dir, true, true, log, metrics)
 
 	Convey("Dedupe", t, func(c C) {
-		blobDigest1 := ""
-		blobDigest2 := ""
+		var blobDigest1, blobDigest2 string
 
 		// manifest1
 		v, err := il.NewBlobUpload("dedupe1")

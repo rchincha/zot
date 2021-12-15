@@ -9,6 +9,7 @@
 // @license.name Apache 2.0
 // @license.url http://www.apache.org/licenses/LICENSE-2.0.html
 
+// nolint: varnamelen,forcetypeassert,errorlint
 package api
 
 import (
@@ -230,6 +231,7 @@ func (rh *RouteHandler) ListTags(w http.ResponseWriter, r *http.Request) {
 				if tag == last {
 					found = true
 					i = idx
+
 					break
 				}
 			}
@@ -576,7 +578,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 
 	mediaType := r.Header.Get("Accept")
 
-	br, blen, err := is.GetBlob(name, digest, mediaType)
+	bReader, blen, err := is.GetBlob(name, digest, mediaType)
 	if err != nil {
 		switch err {
 		case zerr.ErrBadBlobDigest:
@@ -596,7 +598,7 @@ func (rh *RouteHandler) GetBlob(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Length", fmt.Sprintf("%d", blen))
 	w.Header().Set(DistContentDigestKey, digest)
 	// return the blob data
-	WriteDataFromReader(w, http.StatusOK, blen, mediaType, br, rh.c.Log)
+	WriteDataFromReader(w, http.StatusOK, blen, mediaType, bReader, rh.c.Log)
 }
 
 // DeleteBlob godoc
@@ -688,7 +690,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		// if found in cache, will do hard link and if fails we will start new upload.
 		_, _, err := is.CheckBlob(name, mountDigests[0])
 		if err != nil {
-			u, err := is.NewBlobUpload(name)
+			uniqueID, err := is.NewBlobUpload(name)
 			if err != nil {
 				switch err {
 				case zerr.ErrRepoNotFound:
@@ -701,7 +703,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 				return
 			}
 
-			w.Header().Set("Location", path.Join(r.URL.String(), u))
+			w.Header().Set("Location", path.Join(r.URL.String(), uniqueID))
 			w.Header().Set("Range", "bytes=0-0")
 			w.WriteHeader(http.StatusAccepted)
 
@@ -772,7 +774,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	u, err := is.NewBlobUpload(name)
+	uniqueID, err := is.NewBlobUpload(name)
 	if err != nil {
 		switch err {
 		case zerr.ErrRepoNotFound:
@@ -785,7 +787,7 @@ func (rh *RouteHandler) CreateBlobUpload(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.Header().Set("Location", path.Join(r.URL.String(), u))
+	w.Header().Set("Location", path.Join(r.URL.String(), uniqueID))
 	w.Header().Set("Range", "bytes=0-0")
 	w.WriteHeader(http.StatusAccepted)
 }

@@ -1,3 +1,4 @@
+// nolint: varnamelen
 package api
 
 import (
@@ -57,10 +58,12 @@ func bearerAuthHandler(c *Controller) mux.MiddlewareFunc {
 				c.Log.Error().Err(err).Msg("issue parsing Authorization header")
 				respWriter.Header().Set("Content-Type", "application/json")
 				WriteJSON(respWriter, http.StatusInternalServerError, NewErrorList(NewError(UNSUPPORTED)))
+
 				return
 			}
 			if !permissions.Allowed {
 				authFail(respWriter, permissions.WWWAuthenticateHeader, 0)
+
 				return
 			}
 			next.ServeHTTP(respWriter, request)
@@ -86,12 +89,14 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 					request.TLS.VerifiedChains == nil &&
 					request.Method != http.MethodGet && request.Method != http.MethodHead {
 					authFail(w, realm, 5)
+
 					return
 				}
 
 				if (request.Method != http.MethodGet && request.Method != http.MethodHead) && c.Config.HTTP.ReadOnly {
 					// Reject modification requests in read-only mode
 					w.WriteHeader(http.StatusMethodNotAllowed)
+
 					return
 				}
 				// Process request
@@ -149,13 +154,13 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 		}
 
 		if c.Config.HTTP.Auth.HTPasswd.Path != "" {
-			f, err := os.Open(c.Config.HTTP.Auth.HTPasswd.Path)
+			file, err := os.Open(c.Config.HTTP.Auth.HTPasswd.Path)
 			if err != nil {
 				panic(err)
 			}
-			defer f.Close()
+			defer file.Close()
 
-			scanner := bufio.NewScanner(f)
+			scanner := bufio.NewScanner(file)
 
 			for scanner.Scan() {
 				line := scanner.Text()
@@ -172,12 +177,14 @@ func basicAuthHandler(c *Controller) mux.MiddlewareFunc {
 			if (r.Method == http.MethodGet || r.Method == http.MethodHead) && c.Config.HTTP.AllowReadAccess {
 				// Process request
 				next.ServeHTTP(w, r)
+
 				return
 			}
 
 			if (r.Method != http.MethodGet && r.Method != http.MethodHead) && c.Config.HTTP.ReadOnly {
 				// Reject modification requests in read-only mode
 				w.WriteHeader(http.StatusMethodNotAllowed)
+
 				return
 			}
 

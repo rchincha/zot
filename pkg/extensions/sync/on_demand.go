@@ -59,6 +59,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 			if len(repos) == 0 {
 				log.Info().Msgf("skipping syncing on demand %s from %s registry because it's filtered out by content config",
 					repo, regCfg.URL)
+
 				continue
 			}
 		}
@@ -73,6 +74,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		upstreamRepoRef, err := parseRepositoryReference(fmt.Sprintf("%s/%s", upstreamRegistryName, repo))
 		if err != nil {
 			log.Error().Err(err).Msgf("error parsing repository reference %s/%s", upstreamRegistryName, repo)
+
 			return err
 		}
 
@@ -80,6 +82,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		if err != nil {
 			log.Error().Err(err).Msgf("error creating a reference for repository %s and tag %q",
 				upstreamRepoRef.Name(), tag)
+
 			return err
 		}
 
@@ -87,6 +90,7 @@ func OneImage(cfg Config, storeController storage.StoreController,
 		if err != nil {
 			log.Error().Err(err).Msgf("error creating docker reference for repository %s and tag %q",
 				upstreamRepoRef.Name(), tag)
+
 			return err
 		}
 
