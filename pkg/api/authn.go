@@ -45,6 +45,11 @@ func bearerAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodOptions {
+				// skip authN for OPTIONS method
+				next.ServeHTTP(response, request)
+			}
+
 			vars := mux.Vars(request)
 			name := vars["name"]
 			header := request.Header.Get("Authorization")
@@ -86,6 +91,11 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 		(ctlr.Config.HTTP.Auth.HTPasswd.Path == "" && ctlr.Config.HTTP.Auth.LDAP == nil) {
 		return func(next http.Handler) http.Handler {
 			return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+				if request.Method == http.MethodOptions {
+					// skip authN for OPTIONS method
+					next.ServeHTTP(response, request)
+				}
+
 				if ctlr.Config.HTTP.AllowReadAccess &&
 					ctlr.Config.HTTP.TLS.CACert != "" &&
 					request.TLS.VerifiedChains == nil &&
@@ -177,6 +187,11 @@ func basicAuthHandler(ctlr *Controller) mux.MiddlewareFunc {
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+			if request.Method == http.MethodOptions {
+				// skip authN for OPTIONS method
+				next.ServeHTTP(response, request)
+			}
+
 			if (request.Method == http.MethodGet || request.Method == http.MethodHead) && ctlr.Config.HTTP.AllowReadAccess {
 				// Process request
 				next.ServeHTTP(response, request)

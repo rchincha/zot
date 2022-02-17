@@ -57,17 +57,12 @@ func NewController(config *config.Config) *Controller {
 	return &controller
 }
 
-func DefaultHeaders() mux.MiddlewareFunc {
-	return func(next http.Handler) http.Handler {
-		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			// CORS
-			response.Header().Set("Access-Control-Allow-Origin", "*")
-			response.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
-
-			// handle the request
-			next.ServeHTTP(response, request)
-		})
-	}
+func CORSHandler(response http.ResponseWriter, request *http.Request) {
+	// CORS
+	response.Header().Set("Access-Control-Allow-Origin", "*")
+	response.Header().Set("Access-Control-Allow-Methods", "POST, GET, OPTIONS")
+	response.WriteHeader(http.StatusNoContent)
+	return
 }
 
 func DumpRuntimeParams(log log.Logger) {
@@ -108,6 +103,9 @@ func (c *Controller) Run() error {
 	// setup HTTP API router
 	engine := mux.NewRouter()
 
+	// CORS
+	engine.Methods(http.MethodOptions).HandlerFunc(CORSHandler)
+
 	// rate-limit HTTP requests if enabled
 	if c.Config.HTTP.Ratelimit != nil {
 		if c.Config.HTTP.Ratelimit.Rate != nil {
@@ -120,7 +118,6 @@ func (c *Controller) Run() error {
 	}
 
 	engine.Use(
-		DefaultHeaders(),
 		SessionLogger(c),
 		handlers.RecoveryHandler(handlers.RecoveryLogger(c.Log),
 			handlers.PrintRecoveryStack(false)))
