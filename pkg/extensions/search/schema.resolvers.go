@@ -358,11 +358,10 @@ func (r *queryResolver) ExpandedRepoInfo(ctx context.Context, repo string) (*gql
 }
 
 // GlobalSearch is the resolver for the GlobalSearch field.
-func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_generated.GlobalSearchResult, error) {
+func (r *queryResolver) GlobalSearch(ctx context.Context, query string, requestedPage *gql_generated.PageInput) (*gql_generated.GlobalSearchResult, error) {
 	query = cleanQuerry(query)
-	defaultStore := r.storeController.DefaultStore
-	olu := common.NewBaseOciLayoutUtils(r.storeController, r.log)
 
+<<<<<<< HEAD
 	var name, tag string
 
 	_, err := fmt.Sscanf(query, "%s %s", &name, &tag)
@@ -385,12 +384,15 @@ func (r *queryResolver) GlobalSearch(ctx context.Context, query string) (*gql_ge
 	}
 
 	repos, images, layers := globalSearch(availableRepos, name, tag, olu, r.cveInfo, r.log)
+=======
+	repos, images, layers, err := globalSearch(ctx, query, r.repoDB, requestedPage, r.log)
+>>>>>>> e3cb60b (boltdb query logic)
 
 	return &gql_generated.GlobalSearchResult{
 		Images: images,
 		Repos:  repos,
 		Layers: layers,
-	}, nil
+	}, err
 }
 
 // DependencyListForImage is the resolver for the DependencyListForImage field.
