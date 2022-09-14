@@ -24,6 +24,8 @@ import (
 	"zotregistry.io/zot/pkg/extensions/monitoring"
 	"zotregistry.io/zot/pkg/extensions/search/common"
 	cveinfo "zotregistry.io/zot/pkg/extensions/search/cve"
+	cvemodel "zotregistry.io/zot/pkg/extensions/search/cve/model"
+	"zotregistry.io/zot/pkg/extensions/search/cve/trivy"
 	"zotregistry.io/zot/pkg/log"
 	"zotregistry.io/zot/pkg/storage"
 	. "zotregistry.io/zot/pkg/test"
@@ -31,7 +33,7 @@ import (
 
 // nolint:gochecknoglobals
 var (
-	cve            *cveinfo.CveInfo
+	cve            cveinfo.CveInfo
 	dbDir          string
 	updateDuration time.Duration
 )
@@ -62,15 +64,8 @@ type ImgList struct {
 
 //nolint:tagliatelle // graphQL schema
 type CVEResultForImage struct {
-	Tag     string `json:"Tag"`
-	CVEList []CVE  `json:"CVEList"`
-}
-
-//nolint:tagliatelle // graphQL schema
-type CVE struct {
-	ID          string `json:"Id"`
-	Description string `json:"Description"`
-	Severity    string `json:"Severity"`
+	Tag     string         `json:"Tag"`
+	CVEList []cvemodel.CVE `json:"CVEList"`
 }
 
 func testSetup() error {
@@ -89,8 +84,9 @@ func testSetup() error {
 	storeController := storage.StoreController{DefaultStore: storage.NewImageStore(dir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)}
 
 	layoutUtils := common.NewBaseOciLayoutUtils(storeController, log)
+	scanner := trivy.NewScanner(storeController, layoutUtils, log)
 
-	cve = &cveinfo.CveInfo{Log: log, StoreController: storeController, LayoutUtils: layoutUtils}
+	cve = &cveinfo.BaseCveInfo{Log: log, Scanner: scanner, LayoutUtils: layoutUtils}
 
 	dbDir = dir
 
@@ -318,43 +314,65 @@ func makeTestFile(fileName, content string) error {
 	return nil
 }
 
-func TestMultipleStoragePath(t *testing.T) {
-	Convey("Test multiple storage path", t, func() {
-		// Create temporary directory
-		firstRootDir := t.TempDir()
-		secondRootDir := t.TempDir()
-		thirdRootDir := t.TempDir()
-
+func TestImageFormat(t *testing.T) {
+	Convey("Test valid image", t, func() {
 		log := log.NewLogger("debug", "")
-		metrics := monitoring.NewMetricsServer(false, log)
+		dbDir := "../../../../test/data"
 
 		conf := config.New()
 		conf.Extensions = &extconf.ExtensionConfig{}
 		conf.Extensions.Lint = &extconf.LintConfig{}
 
-		// Create ImageStore
-		firstStore := storage.NewImageStore(firstRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		metrics := monitoring.NewMetricsServer(false, log)
+		defaultStore := storage.NewImageStore(dbDir, false, storage.DefaultGCDelay,
+			false, false, log, metrics, nil)
+		storeController := storage.StoreController{DefaultStore: defaultStore}
 
-		secondStore := storage.NewImageStore(secondRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
+		cveInfo := cveinfo.NewCVEInfo(storeController, log)
 
-		thirdStore := storage.NewImageStore(thirdRootDir, false, storage.DefaultGCDelay, false, false, log, metrics, nil)
-
-		storeController := storage.StoreController{}
-
-		storeController.DefaultStore = firstStore
-
-		subStore := make(map[string]storage.ImageStore)
-
-		subStore["/a"] = secondStore
-		subStore["/b"] = thirdStore
-
-		storeController.SubStore = subStore
-
-		cveInfo, err := cveinfo.GetCVEInfo(storeController, log)
-
+		isValidImage, err := cveInfo.Scanner.IsImageFormatScannable("zot-test")
 		So(err, ShouldBeNil)
-		So(cveInfo.StoreController.DefaultStore, ShouldNotBeNil)
-		So(cveInfo.StoreController.SubStore, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, true)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-test:0.0.1")
+		So(err, ShouldBeNil)
+		So(isValidImage, ShouldEqual, true)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-test:0.0.")
+		So(err, ShouldBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-noindex-test")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot--tet")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-noindex-test")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-squashfs-noblobs")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-squashfs-invalid-index")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-squashfs-invalid-blob")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-squashfs-test:0.3.22-squashfs")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
+
+		isValidImage, err = cveInfo.Scanner.IsImageFormatScannable("zot-nonreadable-test")
+		So(err, ShouldNotBeNil)
+		So(isValidImage, ShouldEqual, false)
 	})
 }
 
