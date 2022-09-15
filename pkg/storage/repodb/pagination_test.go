@@ -25,6 +25,16 @@ func TestPagination(t *testing.T) {
 	})
 
 	Convey("Image Pagination", t, func() {
+		Convey("fails", func() {
+			paginator, err := repodb.NewBaseImagePageFinder(1, 10, repodb.AlphabeticAsc)
+			paginator.Add(repodb.DetailedRepoMeta{})
+			paginator.Add(repodb.DetailedRepoMeta{})
+			paginator.Add(repodb.DetailedRepoMeta{})
+			paginator.Page()
+			So(paginator, ShouldBeNil)
+			So(err, ShouldNotBeNil)
+		})
+
 		Convey("create new paginator errors", func() {
 			paginator, err := repodb.NewBaseImagePageFinder(-1, 10, repodb.AlphabeticAsc)
 			So(paginator, ShouldBeNil)
