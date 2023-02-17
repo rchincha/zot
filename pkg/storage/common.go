@@ -3,9 +3,11 @@ package storage
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"path"
 	"strings"
 
+	"github.com/alecthomas/jsonschema"
 	"github.com/gobwas/glob"
 	godigest "github.com/opencontainers/go-digest"
 	imeta "github.com/opencontainers/image-spec/specs-go"
@@ -13,6 +15,7 @@ import (
 	oras "github.com/oras-project/artifacts-spec/specs-go/v1"
 	"github.com/rs/zerolog"
 	"github.com/sigstore/cosign/pkg/oci/remote"
+	"github.com/xeipuuv/gojsonschema"
 
 	zerr "zotregistry.io/zot/errors"
 	storageConstants "zotregistry.io/zot/pkg/storage/constants"
@@ -68,6 +71,37 @@ func ValidateManifest(imgStore ImageStore, repo, reference, mediaType string, bo
 	switch mediaType {
 	case ispec.MediaTypeImageManifest:
 		var manifest ispec.Manifest
+		sc := jsonschema.Reflect(&manifest)
+		b, _ := json.Marshal(sc)
+		loader := gojsonschema.NewStringLoader(string(b))
+		documentLoader := gojsonschema.NewStringLoader(string(body))
+		schema, err := gojsonschema.NewSchema(loader)
+		if err != nil {
+			log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+			return "", zerr.ErrBadManifest
+		}
+
+		result, err := schema.Validate(documentLoader)
+		if err != nil {
+			log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+			return "", zerr.ErrBadManifest
+		}
+
+		if !result.Valid() {
+			fmt.Printf("The document is not valid. see errors :\n")
+
+			for _, err := range result.Errors() {
+				// Err implements the ResultError interface
+				fmt.Printf("- %s\n", err)
+			}
+
+			log.Error().Err(err).Msg("unable to unmarshal JSON")
+
+			return "", zerr.ErrBadManifest
+		}
+
 		if err := json.Unmarshal(body, &manifest); err != nil {
 			log.Error().Err(err).Msg("unable to unmarshal JSON")
 

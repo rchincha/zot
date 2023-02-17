@@ -51,6 +51,7 @@ require (
 )
 
 require (
+	github.com/alecthomas/jsonschema v0.0.0-20220216202328-9eeeec9d044b
 	github.com/aquasecurity/trivy v0.36.1
 	github.com/aws/aws-sdk-go-v2/service/dynamodb v1.18.2
 	github.com/containers/image/v5 v5.23.0
@@ -59,6 +60,7 @@ require (
 	github.com/opencontainers/distribution-spec/specs-go v0.0.0-20230117141039-067a0f5b0e25
 	github.com/sigstore/cosign v1.13.1
 	github.com/swaggo/http-swagger v1.3.3
+	github.com/xeipuuv/gojsonschema v1.2.0
 	oras.land/oras-go/v2 v2.0.0-rc.5
 )
 
@@ -101,6 +103,7 @@ require (
 	github.com/google/shlex v0.0.0-20191202100458-e7afc7fbc510 // indirect
 	github.com/gosuri/uitable v0.0.4 // indirect
 	github.com/gregjones/httpcache v0.0.0-20180305231024-9cad4c3443a7 // indirect
+	github.com/iancoleman/orderedmap v0.0.0-20190318233801-ac98e3ecb4b0 // indirect
 	github.com/jmoiron/sqlx v1.3.5 // indirect
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51 // indirect
 	github.com/lann/builder v0.0.0-20180802200727-47ae307949d0 // indirect
@@ -137,7 +140,6 @@ require (
 	github.com/spdx/tools-golang v0.3.0 // indirect
 	github.com/tetratelabs/wazero v1.0.0-pre.7 // indirect
 	github.com/urfave/cli/v2 v2.8.1 // indirect
-	github.com/xeipuuv/gojsonschema v1.2.0 // indirect
 	github.com/xlab/treeprint v1.1.0 // indirect
 	github.com/xrash/smetrics v0.0.0-20201216005158-039620a65673 // indirect
 	go.starlark.net v0.0.0-20200306205701-8dd3e2ee1dd5 // indirect
