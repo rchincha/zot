@@ -565,7 +565,7 @@ func (is *ImageStoreLocal) PutImageManifest(repo, reference, mediaType string, /
 		return "", "", err
 	}
 
-	if is.gc {
+	if is.gc && subjectDigest != godigest.Digest("") {
 		if err := is.garbageCollect(dir, repo); err != nil {
 			return "", "", err
 		}
