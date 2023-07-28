@@ -189,7 +189,7 @@ jobs:
       packages: write
     strategy:
       matrix:
-        os: [linux, darwin]
+        os: [linux, darwin, freebsd]
         arch: [amd64, arm64]
     steps:
       - name: Check out the repo
