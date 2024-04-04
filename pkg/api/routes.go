@@ -127,11 +127,17 @@ func (rh *RouteHandler) SetupRoutes() {
 		prefixedDistSpecRouter.Use(DistSpecAuthzHandler(rh.c))
 	}
 
+	clusterRouteProxy := ClusterProxy(rh.c)
+
 	// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#endpoints
 	{
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/tags/list", zreg.NameRegexp.String()),
-			getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
-				applyCORSHeaders(rh.ListTags))).Methods(http.MethodGet, http.MethodOptions)
+			clusterRouteProxy(
+				getUIHeadersHandler(rh.c.Config, http.MethodGet, http.MethodOptions)(
+					applyCORSHeaders(rh.ListTags),
+				),
+			),
+		).Methods(http.MethodGet, http.MethodOptions)
 		prefixedDistSpecRouter.HandleFunc(fmt.Sprintf("/{name:%s}/manifests/{reference}", zreg.NameRegexp.String()),
 			getUIHeadersHandler(rh.c.Config, http.MethodHead, http.MethodGet, http.MethodDelete, http.MethodOptions)(
 				applyCORSHeaders(rh.CheckManifest))).Methods(http.MethodHead, http.MethodOptions)

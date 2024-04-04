@@ -124,13 +124,6 @@ func (c *Controller) Run() error {
 		engine.Use(SessionAuditLogger(c.Audit))
 	}
 
-	/*
-		if c.Cluster != nil {
-			engine.Use(ProxyCluster)
-		}
-
-	*/
-
 	c.Router = engine
 	c.Router.UseEncodedPath()
 

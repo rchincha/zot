@@ -489,6 +489,11 @@ run-blackbox-tests: $(BATS_TEST_FILE_PATH) check-blackbox-prerequisites binary b
 	echo running bats test "$(BATS_TEST_FILE_PATH)"; \
 	$(BATS) $(BATS_FLAGS) $(BATS_TEST_FILE_PATH)
 
+.PHONY: run-cloud-cluster-tests
+run-cloud-cluster-tests: check-blackbox-prerequisites check-awslocal binary
+	echo running cloud cluster bats test; \
+	$(BATS) $(BATS_FLAGS) test/cluster/cloud_cluster.bats
+
 .PHONY: run-blackbox-ci
 run-blackbox-ci: check-blackbox-prerequisites binary binary-minimal cli
 	echo running CI bats tests concurently
