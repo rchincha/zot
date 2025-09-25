@@ -1,10 +1,10 @@
 package main
 
 import (
+	"log/slog"
 	"os"
 
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 
 	"zotregistry.dev/zot/pkg/api/config"
@@ -26,8 +26,8 @@ func NewPerfRootCmd() *cobra.Command {
 		Long:  "`zb`",
 		Run: func(cmd *cobra.Command, args []string) {
 			if showVersion {
-				log.Info().Str("distribution-spec", distspec.Version).Str("commit", config.Commit).
-					Str("binary-type", config.BinaryType).Str("go version", config.GoVersion).Msg("version")
+				slog.Info("version", "distribution-spec", distspec.Version, "commit", config.Commit,
+					"binary-type", config.BinaryType, "go version", config.GoVersion)
 			}
 
 			if len(args) == 0 {
