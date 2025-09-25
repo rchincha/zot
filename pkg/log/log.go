@@ -164,6 +164,12 @@ func NewTestLogger() Logger {
 	return NewLogger("debug", "")
 }
 
+// NewTestLoggerPtr creates a pointer to a logger for testing purposes
+func NewTestLoggerPtr() *Logger {
+	logger := NewLogger("debug", "")
+	return &logger
+}
+
 // Msgf logs the event with a formatted message
 func (e *Event) Msgf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
