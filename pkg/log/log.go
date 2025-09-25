@@ -159,6 +159,11 @@ func (e *Event) Dur(key string, d time.Duration) *Event {
 	return e
 }
 
+// NewTestLogger creates a logger for testing purposes (replaces zerolog.New(os.Stdout))
+func NewTestLogger() Logger {
+	return NewLogger("debug", "")
+}
+
 // Msgf logs the event with a formatted message
 func (e *Event) Msgf(format string, args ...interface{}) {
 	msg := fmt.Sprintf(format, args...)
