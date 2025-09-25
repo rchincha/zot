@@ -17,7 +17,7 @@ import (
 	glob "github.com/bmatcuk/doublestar/v4"
 	"github.com/go-viper/mapstructure/v2"
 	distspec "github.com/opencontainers/distribution-spec/specs-go"
-	"log/slog"
+	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 

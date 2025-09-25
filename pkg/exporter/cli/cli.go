@@ -4,8 +4,9 @@
 package cli
 
 import (
+	"log/slog"
+
 	"github.com/go-viper/mapstructure/v2"
-	"github.com/rs/zerolog/log"
 	"github.com/spf13/cobra"
 	"github.com/spf13/viper"
 
@@ -60,20 +61,24 @@ func loadConfiguration(config *api.Config, configPath string) {
 	viper.SetConfigFile(configPath)
 
 	if err := viper.ReadInConfig(); err != nil {
-		log.Panic().Err(err).Str("config", configPath).Msg("failed to read configuration")
+		slog.Error("failed to read configuration", "error", err, "config", configPath)
+		panic(err)
 	}
 
 	metaData := &mapstructure.Metadata{}
 	if err := viper.Unmarshal(&config, metadataConfig(metaData)); err != nil {
-		log.Panic().Err(err).Str("config", configPath).Msg("failed to unmarshal config")
+		slog.Error("failed to unmarshal config", "error", err, "config", configPath)
+		panic(err)
 	}
 
 	if len(metaData.Keys) == 0 {
-		log.Panic().Err(zerr.ErrBadConfig).Str("config", configPath).Msg("bad configuration")
+		slog.Error("bad configuration", "error", zerr.ErrBadConfig, "config", configPath)
+		panic(zerr.ErrBadConfig)
 	}
 
 	if len(metaData.Unused) > 0 {
-		log.Panic().Err(zerr.ErrBadConfig).Interface("unknown fields", metaData.Unused).
-			Str("config", configPath).Msg("bad configuration")
+		slog.Error("bad configuration", "error", zerr.ErrBadConfig, "config", configPath, 
+			"unknown fields", metaData.Unused)
+		panic(zerr.ErrBadConfig)
 	}
 }
