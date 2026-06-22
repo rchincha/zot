@@ -28,7 +28,7 @@ jobs:
           check-latest: true
           go-version: 1.25.x
       - name: Checkout
-        uses: actions/checkout@v6
+        uses: actions/checkout@v7
       - name: Build zot
         run: |
           echo "Building $FLAVOR"
