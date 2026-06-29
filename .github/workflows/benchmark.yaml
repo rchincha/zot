@@ -25,7 +25,7 @@ jobs:
         run: make BENCH_OUTPUT=ci-cd run-bench
       # Download previous benchmark result from cache (if exists)
       - name: Download previous benchmark data
-        uses: actions/cache@v5
+        uses: actions/cache@v6
         with:
           path: ./cache
           key: ${{ runner.os }}-gen1-benchmark
