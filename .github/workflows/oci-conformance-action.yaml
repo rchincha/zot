@@ -21,7 +21,7 @@ jobs:
     # Steps represent a sequence of tasks that will be executed as part of the job
     steps:
     - name: Install go 1.23
-      uses: actions/setup-go@v6
+      uses: actions/setup-go@v7
       with:
         cache: false
         check-latest: true
