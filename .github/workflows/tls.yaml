@@ -23,7 +23,7 @@ jobs:
     name: TLS check (${{ matrix.mode }})
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           cache: false
           check-latest: true

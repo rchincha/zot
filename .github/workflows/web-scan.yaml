@@ -22,7 +22,7 @@ jobs:
         flavor: [zot-linux-amd64-minimal, zot-linux-amd64]
     steps:
       - name: Install go
-        uses: actions/setup-go@v6
+        uses: actions/setup-go@v7
         with:
           cache: false
           check-latest: true

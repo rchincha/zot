@@ -19,7 +19,7 @@ jobs:
     name: License Check
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-go@v6
+      - uses: actions/setup-go@v7
         with:
           cache: false
           check-latest: true
