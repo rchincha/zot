@@ -13,7 +13,6 @@ import (
 	"slices"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 	"unicode/utf8"
 
@@ -64,15 +63,16 @@ type ImageStore struct {
 	linter        common.Lint
 	commit        bool
 	compat        []compat.MediaCompatibility
-	// dedupeRebuildDone is set once RunDedupeBlobs has walked all blobs, i.e. the
-	// cache accounts for every pre-existing blob; see deleteBlob.
-	dedupeRebuildDone atomic.Bool
 }
 
 type blobRefIndexer interface {
 	PutBlobRef(digest godigest.Digest, path string) error
 	DeleteBlobRef(digest godigest.Digest, path string) error
 	GetBlobRefs(digest godigest.Digest) ([]string, error)
+}
+
+type blobRefEnumerator interface {
+	GetAllBlobRefs() (map[godigest.Digest][]string, error)
 }
 
 func (is *ImageStore) blobRefs() blobRefIndexer {
@@ -131,6 +131,32 @@ func (is *ImageStore) blobRefsForDigest(digest godigest.Digest) ([]string, error
 	return is.cache.GetAllBlobs(digest)
 }
 
+func (is *ImageStore) hasBlobRef(digest godigest.Digest, blobPath string) (bool, error) {
+	refs, err := is.blobRefsForDigest(digest)
+	if err != nil {
+		if errors.Is(err, zerr.ErrCacheMiss) {
+			return false, nil
+		}
+
+		return false, err
+	}
+
+	wantedPath := filepath.ToSlash(blobPath)
+	wantedRelativePath, relativeErr := filepath.Rel(is.rootDir, blobPath)
+	if relativeErr == nil {
+		wantedRelativePath = filepath.ToSlash(wantedRelativePath)
+	}
+
+	for _, ref := range refs {
+		normalizedRef := filepath.ToSlash(strings.TrimPrefix(ref, "./"))
+		if normalizedRef == wantedPath || relativeErr == nil && normalizedRef == wantedRelativePath {
+			return true, nil
+		}
+	}
+
+	return false, nil
+}
+
 func (is *ImageStore) Name() string {
 	return is.storeDriver.Name()
 }
@@ -171,6 +197,12 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 		events:        recorder,
 	}
 
+	if dedupe && imgStore.lifecycle.UsesLogicalRepoRefs() && cacheDriver == nil {
+		log.Error().Str("rootDir", rootDir).Msg("remote dedupe requires durable blob reference metadata")
+
+		return nil
+	}
+
 	if dedupe {
 		// create the global blobs repo which will serve as the master copy for all deduped blobs
 		if err := imgStore.initRepo(context.Background(), storageConstants.GlobalBlobsRepo); err != nil {
@@ -187,9 +219,6 @@ func NewImageStore(rootDir string, cacheDir string, dedupe, commit bool, log zlo
 			return nil
 		}
 	}
-
-	// Deletes are only gated while a dedupe/restore walk is pending; see RunDedupeBlobs.
-	imgStore.dedupeRebuildDone.Store(true)
 
 	return imgStore
 }
@@ -427,8 +456,8 @@ func (is *ImageStore) promoteBlobCandidate(
 	if candidate.size == 0 && digest != emptyDigest {
 		if binfo, err := is.storeDriver.Stat(globalBlobPath); err == nil {
 			if binfo.Size() > 0 {
-				// Resume safety: candidate can be a repo marker after a partial prior run.
-				// If global content already exists, do not overwrite it with marker bytes.
+				// Resume safety: a candidate can be a legacy placeholder after a partial
+				// migration. Never overwrite verified global content with empty bytes.
 				if err := is.putBlobRef(digest, globalBlobPath); err != nil {
 					is.log.Error().Err(err).Str("digest", digest.String()).
 						Msg("failed to update blob refs with existing global blob path during upgrade")
@@ -613,26 +642,24 @@ func (is *ImageStore) upgradeToGlobalBlobstore() error {
 			continue
 		}
 
-		if repoBlobRef.size > 0 {
-			if err := is.verifyPromotedGlobalBlobForMigration(repoBlobRef, verifiedPromotedDigests); err != nil {
-				return err
-			}
-
-			globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, repoBlobRef.digest)
-
-			if err := is.lifecycle.ConvertMigratedRepoBlobToMarker(globalBlobPath, repoBlobRef.blobPath); err != nil {
-				is.log.Error().Err(err).Str("digest", repoBlobRef.digest.String()).Str("repo", repoBlobRef.repoName).
-					Str("repoBlobPath", repoBlobRef.blobPath).Msg("failed to convert repo blob to marker")
-
-				return err
-			}
-		}
-
-		// always register each repo's blob path in the cache as a duplicate,
-		// so GetAllDedupeReposCandidates returns all repos that own this blob
+		// Ownership must be durable before remote migration removes the legacy object.
+		// Local migration records the same reference and keeps the hardlink.
 		if err := is.putBlobRef(repoBlobRef.digest, repoBlobRef.blobPath); err != nil {
 			is.log.Error().Err(err).Str("digest", repoBlobRef.digest.String()).Str("repo", repoBlobRef.repoName).
 				Msg("failed to register repo blob path in blob refs during upgrade")
+
+			return err
+		}
+
+		if err := is.verifyPromotedGlobalBlobForMigration(repoBlobRef, verifiedPromotedDigests); err != nil {
+			return err
+		}
+
+		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, repoBlobRef.digest)
+
+		if err := is.lifecycle.RemoveMigratedRepoBlob(globalBlobPath, repoBlobRef.blobPath); err != nil {
+			is.log.Error().Err(err).Str("digest", repoBlobRef.digest.String()).Str("repo", repoBlobRef.repoName).
+				Str("repoBlobPath", repoBlobRef.blobPath).Msg("failed to remove migrated repo blob")
 
 			return err
 		}
@@ -671,14 +698,13 @@ func (is *ImageStore) completeBlobstoreUpgrade(markerPath string, skippedRepoLis
 
 func (is *ImageStore) verifyPromotedGlobalBlobForMigration(ref repoBlobRef, verified map[string]bool) error {
 	// Local filesystem migration uses hardlinks and keeps per-repo blobs as content files.
-	if !is.lifecycle.ShouldGateDeleteUntilRebuild() || verified[ref.digest.String()] {
+	if !is.lifecycle.UsesLogicalRepoRefs() || verified[ref.digest.String()] {
 		return nil
 	}
 
 	globalDigestPath := is.BlobPath(storageConstants.GlobalBlobsRepo, ref.digest)
 
-	// For remote marker backends, verify promoted global content before replacing
-	// per-repo content blobs with zero-byte markers.
+	// Remote migration verifies the canonical payload before deleting repo objects.
 	if err := is.VerifyBlobDigestValue(storageConstants.GlobalBlobsRepo, ref.digest); err != nil {
 		is.log.Error().Err(err).Str("digest", ref.digest.String()).Str("repo", ref.repoName).
 			Str("globalBlobPath", globalDigestPath).Msg("failed to verify promoted global blob during upgrade")
@@ -903,13 +929,12 @@ func (is *ImageStore) GetRepositories() ([]string, error) {
 }
 
 // isDigestReferencedAcrossRepos reports whether any repo other than the global
-// blobstore still holds a physical blob path for this digest. It relies on the
+// blobstore still owns this digest. It relies on the
 // blob-ref cache (kept in sync by putBlobRef/deleteBlobRef on every dedupe link
 // and delete) rather than scanning manifests: a blob can legitimately exist
 // without yet being referenced by any manifest (e.g. mid-upload, or a raw
-// dedupe'd blob) while still being the last physical copy backing other repos'
-// dedupe markers, so a manifest-only scan can miss live references and cause
-// the shared global copy to be reclaimed while still in use.
+// dedupe'd blob), so a manifest-only scan can miss live ownership and cause
+// the shared global copy to be reclaimed while still owned by a repository.
 func (is *ImageStore) isDigestReferencedAcrossRepos(digest godigest.Digest) (bool, error) {
 	blobPaths, err := is.blobRefsForDigest(digest)
 	if err != nil {
@@ -1924,10 +1949,9 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 				}
 
 				if updatedRecord != "" {
-					// Deleting dstRecord may have promoted a duplicate to take its place
-					// (e.g. another repo's marker) rather than leaving the digest with no
-					// record at all. On a marker/remote backend that promoted path is not
-					// independently valid content - only the global blobstore copy is - so
+					// Deleting dstRecord may promote a logical repository ref to take its
+					// place rather than leaving the digest with no record. That promoted path
+					// is not physical content - only the global blobstore copy is - so
 					// whatever is left after the delete above still needs to be aggressively
 					// cleared, not just the case where the driver left dstRecord untouched.
 					allRecords, allErr := is.cache.GetAllBlobs(dstDigest)
@@ -1985,8 +2009,8 @@ func (is *ImageStore) DedupeBlob(src string, dstDigest godigest.Digest, dstRepo 
 			// Normal dedupe path: link destination to the resolved original blob and add ref.
 			if !is.storeDriver.SameFile(dst, dstRecord) {
 				// dstRecord is the shared master copy that every repo/tag dedupe-linking to this
-				// digest resolves to - on marker-based remote backends dst is never SameFile as
-				// dstRecord (unlike local's hardlink model), so this is the only place a corrupted
+				// digest resolves to. Remote ownership is logical, so dst is never SameFile as
+				// dstRecord (unlike local hardlinks); this is the only place a corrupted
 				// dstRecord ever gets checked and repaired for those backends. Skipping this would
 				// silently link every caller to corrupted content forever, since a plain reupload
 				// only ever writes to dst, never back to dstRecord.
@@ -2113,7 +2137,7 @@ func (is *ImageStore) dedupeBlobFastPath(src string, dstDigest godigest.Digest, 
 				}
 			}
 		} else {
-			// dst is never SameFile as dstRecord on marker-based remote backends, so without this
+			// A logical remote destination is never SameFile as dstRecord, so without this
 			// check every reupload would link straight to a corrupted dstRecord and never notice.
 			// Actually repairing dstRecord needs the write lock (it's shared with every other
 			// repo's link to this content), so just detect it here and defer to the slow path,
@@ -2521,15 +2545,27 @@ func (is *ImageStore) GetBlobPartial(repo string, digest godigest.Digest, mediaT
 	return blobReadCloser, contentLength, totalSize, nil
 }
 
-/*
-	In the case of s3(which doesn't support links) we link them in our cache by
-	keeping a reference to the original blob and its duplicates
-
-On the storage, original blobs are those with contents, and duplicates one are just empty files.
-This function helps handling this situation, by using this one you can make sure you always get the original blob.
-*/
+// originalBlobInfo returns the physical object that contains repo's blob payload.
+// Remote dedupe repos have logical ownership only, so their payload resolves directly
+// to the global blob after the repository reference has been verified.
 func (is *ImageStore) originalBlobInfo(repo string, digest godigest.Digest) (driver.FileInfo, error) {
 	blobPath := is.BlobPath(repo, digest)
+	if is.dedupe && is.lifecycle.UsesLogicalRepoRefs() && repo != storageConstants.GlobalBlobsRepo {
+		hasRef, err := is.hasBlobRef(digest, blobPath)
+		if err != nil || !hasRef {
+			return nil, zerr.ErrBlobNotFound
+		}
+
+		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+		binfo, err := is.storeDriver.Stat(globalBlobPath)
+		if err != nil {
+			is.log.Error().Err(err).Str("blob", globalBlobPath).Msg("failed to stat global blob")
+
+			return nil, zerr.ErrBlobNotFound
+		}
+
+		return binfo, nil
+	}
 
 	binfo, err := is.storeDriver.Stat(blobPath)
 	if err != nil {
@@ -2893,17 +2929,35 @@ func (is *ImageStore) CleanupRepo(repo string, blobs []godigest.Digest, removeRe
 // self-lock would double-lock and deadlock on the CleanupRepo path.
 func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	blobPath := is.BlobPath(repo, digest)
+	logicalRepoRef := is.dedupe && is.lifecycle.UsesLogicalRepoRefs()
 
-	binfo, err := is.storeDriver.Stat(blobPath)
-	if err != nil {
-		var pathNotFoundErr driver.PathNotFoundError
-		if errors.As(err, &pathNotFoundErr) {
+	if logicalRepoRef {
+		hasRef, err := is.hasBlobRef(digest, blobPath)
+		if err != nil {
+			return err
+		}
+
+		if !hasRef {
 			return zerr.ErrBlobNotFound
 		}
 
-		is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+		_, err = is.storeDriver.Stat(is.BlobPath(storageConstants.GlobalBlobsRepo, digest))
+		if err != nil {
+			return zerr.ErrBlobNotFound
+		}
+	} else {
+		var err error
+		_, err = is.storeDriver.Stat(blobPath)
+		if err != nil {
+			var pathNotFoundErr driver.PathNotFoundError
+			if errors.As(err, &pathNotFoundErr) {
+				return zerr.ErrBlobNotFound
+			}
 
-		return err
+			is.log.Error().Err(err).Str("blob", blobPath).Msg("failed to stat blob")
+
+			return err
+		}
 	}
 
 	// first check if this blob is not currently in use
@@ -2912,7 +2966,7 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 	}
 
 	if fmt.Sprintf("%v", is.cache) != fmt.Sprintf("%v", nil) {
-		dstRecord, err := is.cache.GetBlob(digest)
+		_, err := is.cache.GetBlob(digest)
 		if err != nil && !errors.Is(err, zerr.ErrCacheMiss) {
 			is.log.Error().Err(err).Str("digest", digest.String()).Str("component", "dedupe").
 				Msg("failed to lookup blob record")
@@ -2928,22 +2982,14 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 			return err
 		}
 
-		// Cache miss: with dedupe on remote storage this blob may be the only
-		// content copy backing zero-size duplicates elsewhere.
-		// Defer until the startup walk has rebuilt the cache; GC retries later.
-		if dstRecord == "" && binfo.Size() > 0 && is.lifecycle.ShouldGateDeleteUntilRebuild() &&
-			!is.dedupeRebuildDone.Load() {
-			is.log.Warn().Str("digest", digest.String()).Str("blobPath", blobPath).Str("component", "dedupe").
-				Msg("no cache record for content blob while dedupe rebuild is still running, deferring delete")
+		if !logicalRepoRef {
+			// Local dedupe removes the repository hardlink. Remote shared mode has only
+			// the logical reference removed above.
+			if err := is.storeDriver.Delete(blobPath); err != nil {
+				is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
 
-			return zerr.ErrDedupeRebuildInProgress
-		}
-
-		// delete the repo-specific blob file (hard link)
-		if err := is.storeDriver.Delete(blobPath); err != nil {
-			is.log.Error().Err(err).Str("blobPath", blobPath).Msg("failed to remove blob path")
-
-			return err
+				return err
+			}
 		}
 
 		globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
@@ -2979,16 +3025,6 @@ func (is *ImageStore) deleteBlob(repo string, digest godigest.Digest) error {
 		}
 
 		return nil
-	}
-
-	// No cache (dedupe off): leftover placeholders are refilled by the restore
-	// walk; until it completes this blob may be their only content copy.
-	if fmt.Sprintf("%v", is.cache) == fmt.Sprintf("%v", nil) && binfo.Size() > 0 &&
-		is.lifecycle.ShouldGateDeleteUntilRebuild() && !is.dedupeRebuildDone.Load() {
-		is.log.Warn().Str("digest", digest.String()).Str("blobPath", blobPath).Str("component", "dedupe").
-			Msg("content blob delete requested before dedupe restore walk finished, deferring delete")
-
-		return zerr.ErrDedupeRebuildInProgress
 	}
 
 	if err := is.storeDriver.Delete(blobPath); err != nil {
@@ -3062,7 +3098,34 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 	}
 
 	if len(ret) == 0 {
-		is.log.Debug().Str("directory", blobsDir).Msg("empty blobs directory")
+		if is.dedupe && is.lifecycle.UsesLogicalRepoRefs() && repo != storageConstants.GlobalBlobsRepo {
+			if enumerator, ok := is.cache.(blobRefEnumerator); ok {
+				allRefs, err := enumerator.GetAllBlobRefs()
+				if err != nil {
+					return nil, err
+				}
+
+				for digest, refs := range allRefs {
+					wantedPath := filepath.ToSlash(is.BlobPath(repo, digest))
+					for _, ref := range refs {
+						normalizedRef := filepath.ToSlash(strings.TrimPrefix(ref, "./"))
+						if is.cache.UsesRelativePaths() && !path.IsAbs(normalizedRef) {
+							normalizedRef = filepath.ToSlash(path.Join(is.rootDir, normalizedRef))
+						}
+
+						if normalizedRef == wantedPath {
+							ret = append(ret, digest)
+
+							break
+						}
+					}
+				}
+			}
+		}
+
+		if len(ret) == 0 {
+			is.log.Debug().Str("directory", blobsDir).Msg("empty blobs directory")
+		}
 	}
 
 	return ret, nil
@@ -3072,6 +3135,41 @@ func (is *ImageStore) GetAllBlobs(repo string) ([]godigest.Digest, error) {
 // comment; this is the same kind of whole-tree read-only Walk.
 func (is *ImageStore) GetNextDigestWithBlobPaths(repos []string, lastDigests []godigest.Digest,
 ) (godigest.Digest, []string, error) {
+	if !is.dedupe && is.lifecycle.UsesLogicalRepoRefs() {
+		if enumerator, ok := is.cache.(blobRefEnumerator); ok {
+			allRefs, err := enumerator.GetAllBlobRefs()
+			if err != nil {
+				return "", nil, err
+			}
+
+			var nextDigest godigest.Digest
+			for digest := range allRefs {
+				if slices.Contains(lastDigests, digest) {
+					continue
+				}
+
+				if nextDigest == "" || digest.String() < nextDigest.String() {
+					nextDigest = digest
+				}
+			}
+
+			if nextDigest == "" {
+				return "", nil, nil
+			}
+
+			refs := allRefs[nextDigest]
+			if is.cache.UsesRelativePaths() {
+				for index, ref := range refs {
+					if !path.IsAbs(ref) && !strings.HasPrefix(ref, is.rootDir+"/") {
+						refs[index] = path.Join(is.rootDir, ref)
+					}
+				}
+			}
+
+			return nextDigest, refs, nil
+		}
+	}
+
 	dir := is.rootDir
 
 	var duplicateBlobs []string
@@ -3184,12 +3282,8 @@ func (is *ImageStore) getOriginalBlobFromDisk(duplicateBlobs []string) (string, 
 	return "", zerr.ErrBlobNotFound
 }
 
-// getOriginalBlobFromGlobalBlobstore is the last-resort fallback for getOriginalBlob: under the
-// global-blobstore scheme every per-repo copy for a digest is normally a zero-byte marker, with
-// the real content living only under GlobalBlobsRepo. If the cache is stale/rebuilt and
-// getOriginalBlobFromDisk finds nothing (all markers), the content can still be there. Resolve it
-// through the same blobLifecycle seam GetBlob/GetBlobPartial reads use, instead of the disk-scan's
-// own size>0 convention, so restore/rebuild agrees with the read path on what counts as real.
+// getOriginalBlobFromGlobalBlobstore is the compatibility fallback for legacy
+// placeholder layouts when the cache cannot identify a physical payload path.
 func (is *ImageStore) getOriginalBlobFromGlobalBlobstore(digest godigest.Digest) (string, error) {
 	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
 
@@ -3339,6 +3433,9 @@ func (is *ImageStore) dedupeBlobs(ctx context.Context, digest godigest.Digest, d
 
 func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.Digest, duplicateBlobs []string) error {
 	is.log.Info().Str("digest", digest.String()).Str("component", "dedupe").Msg("restoring deduped blobs for digest")
+	if is.lifecycle.UsesLogicalRepoRefs() {
+		return is.restoreLogicalRemoteBlob(ctx, digest, duplicateBlobs)
+	}
 
 	// first we need to find the original blob, either in cache or by checking each blob size
 	originalBlob, err := is.getOriginalBlob(digest, duplicateBlobs)
@@ -3414,6 +3511,59 @@ func (is *ImageStore) restoreDedupedBlobs(ctx context.Context, digest godigest.D
 	return nil
 }
 
+func (is *ImageStore) restoreLogicalRemoteBlob(ctx context.Context, digest godigest.Digest, refs []string) error {
+	globalBlobPath := is.BlobPath(storageConstants.GlobalBlobsRepo, digest)
+	if _, err := is.storeDriver.Stat(globalBlobPath); err != nil {
+		return zerr.ErrBlobNotFound
+	}
+
+	for _, blobPath := range refs {
+		if zcommon.IsContextDone(ctx) {
+			return ctx.Err()
+		}
+
+		repo, err := is.repoFromBlobPath(blobPath)
+		if err != nil {
+			return err
+		}
+
+		if repo == storageConstants.GlobalBlobsRepo {
+			continue
+		}
+
+		if err := is.WithRepoLock(repo, func() error {
+			if err := is.storeDriver.EnsureDir(path.Dir(blobPath)); err != nil {
+				return err
+			}
+
+			return is.lifecycle.PromoteCandidate(globalBlobPath, blobPath)
+		}); err != nil {
+			return err
+		}
+
+		// The physical repo copy is durable before its logical ownership is removed.
+		if err := is.deleteBlobRef(digest, blobPath); err != nil {
+			return err
+		}
+	}
+
+	if err := is.deleteBlobRef(digest, globalBlobPath); err != nil {
+		return err
+	}
+
+	if err := is.storeDriver.Delete(globalBlobPath); err != nil {
+		var pathNotFound driver.PathNotFoundError
+		if !errors.As(err, &pathNotFound) {
+			return err
+		}
+	}
+
+	is.log.Info().Str("digest", digest.String()).Str("component", "dedupe").
+		Msg("restored remote blob into repository storage")
+
+	return nil
+}
+
 // RunDedupeForDigest does not take a lock itself: dedupeBlobs/restoreDedupedBlobs
 // each take one repo's lock per iteration internally, since duplicateBlobs can span
 // many repos and no more than one repo's lock may be held at a time.
@@ -3429,12 +3579,6 @@ func (is *ImageStore) RunDedupeForDigest(ctx context.Context, digest godigest.Di
 
 func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Scheduler) {
 	markerPath := path.Join(is.rootDir, storageConstants.DedupeRestoreCompleteMarker)
-
-	// Gate deletes of cache-unknown blobs until the walk completes (see deleteBlob).
-	// Local storage dedupes via hardlinks, so deletes there never destroy shared content.
-	if is.lifecycle.ShouldGateDeleteUntilRebuild() {
-		is.dedupeRebuildDone.Store(false)
-	}
 
 	if is.dedupe {
 		// Dedupe is active: remove the restore-complete marker so that a future dedupe→false
@@ -3464,9 +3608,6 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 				is.log.Info().Str("component", "dedupe").
 					Msg("restore-complete marker present, skipping dedupe restore scan")
 
-				// storage holds no deduped blobs, so deletes are safe without a walk
-				is.dedupeRebuildDone.Store(true)
-
 				return
 			}
 
@@ -3488,11 +3629,21 @@ func (is *ImageStore) RunDedupeBlobs(interval time.Duration, sch *scheduler.Sche
 	}
 
 	generator.OnRunComplete = func() {
-		// walk finished: deferred blob deletes may proceed (see deleteBlob)
-		is.dedupeRebuildDone.Store(true)
-
 		if is.dedupe {
 			return
+		}
+
+		if is.lifecycle.UsesLogicalRepoRefs() {
+			migrationMarkerPath := path.Join(is.rootDir, storageConstants.BlobstoreMigratedMarker)
+			if err := is.storeDriver.Delete(migrationMarkerPath); err != nil {
+				var pathNotFound driver.PathNotFoundError
+				if !errors.As(err, &pathNotFound) {
+					is.log.Error().Err(err).Str("component", "dedupe").
+						Msg("failed to invalidate global blobstore migration marker after restore")
+
+					return
+				}
+			}
 		}
 
 		if _, err := is.storeDriver.WriteFile(markerPath,

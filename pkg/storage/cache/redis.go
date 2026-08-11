@@ -273,6 +273,30 @@ func (d *RedisDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
 	return d.getAllBlobLike(digest, constants.BlobRefs, "unable to get blob ref")
 }
 
+func (d *RedisDriver) GetAllBlobRefs() (map[godigest.Digest][]string, error) {
+	origins, err := d.db.HGetAll(context.TODO(), d.join(constants.BlobRefs, constants.OriginalBucket)).Result()
+	if err != nil {
+		return nil, err
+	}
+
+	allRefs := make(map[godigest.Digest][]string, len(origins))
+	for digestString := range origins {
+		digest := godigest.Digest(digestString)
+		if err := digest.Validate(); err != nil {
+			continue
+		}
+
+		refs, err := d.GetBlobRefs(digest)
+		if err != nil {
+			return nil, err
+		}
+
+		allRefs[digest] = refs
+	}
+
+	return allRefs, nil
+}
+
 func (d *RedisDriver) HasBlob(digest godigest.Digest, path string) bool {
 	var err error
 

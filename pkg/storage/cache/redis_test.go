@@ -9,6 +9,7 @@ import (
 
 	"github.com/alicebob/miniredis/v2"
 	"github.com/go-redis/redismock/v9"
+	godigest "github.com/opencontainers/go-digest"
 	"github.com/redis/go-redis/v9"
 	. "github.com/smartystreets/goconvey/convey"
 
@@ -248,13 +249,19 @@ func TestRedisBlobRefs(t *testing.T) {
 		})
 
 		Convey("a second PutBlobRef adds a duplicate ref", func() {
-			So(cacheDriver.PutBlobRef("two-refs", "/repo1/blob"), ShouldBeNil)
-			So(cacheDriver.PutBlobRef("two-refs", "/repo2/blob"), ShouldBeNil)
+			testDigest := godigest.FromString("two-refs")
+			So(cacheDriver.PutBlobRef(testDigest, "/repo1/blob"), ShouldBeNil)
+			So(cacheDriver.PutBlobRef(testDigest, "/repo2/blob"), ShouldBeNil)
 
-			refs, err := cacheDriver.GetBlobRefs("two-refs")
+			refs, err := cacheDriver.GetBlobRefs(testDigest)
 			So(err, ShouldBeNil)
 			So(refs, ShouldContain, "/repo1/blob")
 			So(refs, ShouldContain, "/repo2/blob")
+
+			allRefs, err := cacheDriver.GetAllBlobRefs()
+			So(err, ShouldBeNil)
+			So(allRefs[testDigest], ShouldContain, "/repo1/blob")
+			So(allRefs[testDigest], ShouldContain, "/repo2/blob")
 		})
 
 		Convey("DeleteBlobRef on an unknown digest is a cache miss", func() {

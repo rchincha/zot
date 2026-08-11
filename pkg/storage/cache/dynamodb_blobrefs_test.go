@@ -77,6 +77,11 @@ func TestDynamoDBBlobRefs(t *testing.T) {
 			So(err, ShouldBeNil)
 			So(refs, ShouldContain, "/repo1/blob")
 			So(refs, ShouldContain, "/repo2/blob")
+
+			allRefs, err := cacheDriver.GetAllBlobRefs()
+			So(err, ShouldBeNil)
+			So(allRefs[digest], ShouldContain, "/repo1/blob")
+			So(allRefs[digest], ShouldContain, "/repo2/blob")
 		})
 
 		Convey("DeleteBlobRef on the only ref removes the whole entry", func() {

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"slices"
+	"strings"
 
 	"github.com/aws/aws-sdk-go-v2/aws"
 	"github.com/aws/aws-sdk-go-v2/config"
@@ -363,6 +364,54 @@ func (d *DynamoDBDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
 	}
 
 	return blobPaths, nil
+}
+
+func (d *DynamoDBDriver) GetAllBlobRefs() (map[godigest.Digest][]string, error) {
+	allRefs := map[godigest.Digest][]string{}
+	var startKey map[string]types.AttributeValue
+
+	for {
+		resp, err := d.client.Scan(context.TODO(), &dynamodb.ScanInput{
+			TableName:         aws.String(d.tableName),
+			ExclusiveStartKey: startKey,
+		})
+		if err != nil {
+			return nil, err
+		}
+
+		for _, item := range resp.Items {
+			blob := Blob{}
+			if err := attributevalue.UnmarshalMap(item, &blob); err != nil {
+				return nil, err
+			}
+
+			digestString, ok := strings.CutPrefix(blob.Digest, "blob_refs:")
+			if !ok {
+				continue
+			}
+
+			digest := godigest.Digest(digestString)
+			if err := digest.Validate(); err != nil {
+				continue
+			}
+
+			if blob.OriginalBlobPath != "" {
+				allRefs[digest] = append(allRefs[digest], blob.OriginalBlobPath)
+			}
+
+			for _, ref := range blob.DuplicateBlobPath {
+				if ref != "" && ref != blob.OriginalBlobPath {
+					allRefs[digest] = append(allRefs[digest], ref)
+				}
+			}
+		}
+
+		if len(resp.LastEvaluatedKey) == 0 {
+			return allRefs, nil
+		}
+
+		startKey = resp.LastEvaluatedKey
+	}
 }
 
 func (d *DynamoDBDriver) DeleteBlobRef(digest godigest.Digest, path string) error {

@@ -143,10 +143,6 @@ func TestBlobLifecycleSelection(t *testing.T) {
 	localDriver := &lifecycleStubDriver{nameFn: func() string { return constants.LocalStorageDriverName }}
 	localLifecycle := newBlobLifecycle(localDriver)
 
-	if localLifecycle.ShouldGateDeleteUntilRebuild() {
-		t.Fatal("local lifecycle should not gate delete until rebuild")
-	}
-
 	if localLifecycle.IncludeRepoInMountCandidates(constants.GlobalBlobsRepo) {
 		t.Fatal("local lifecycle should exclude _blobstore from mount candidates")
 	}
@@ -157,10 +153,6 @@ func TestBlobLifecycleSelection(t *testing.T) {
 
 	remoteDriver := &lifecycleStubDriver{nameFn: func() string { return constants.S3StorageDriverName }}
 	remoteLifecycle := newBlobLifecycle(remoteDriver)
-
-	if !remoteLifecycle.ShouldGateDeleteUntilRebuild() {
-		t.Fatal("remote lifecycle should gate delete until rebuild")
-	}
 
 	if remoteLifecycle.IncludeRepoInMountCandidates(constants.GlobalBlobsRepo) {
 		t.Fatal("remote lifecycle should exclude _blobstore from mount candidates")
@@ -201,15 +193,12 @@ func TestLocalBlobLifecycleDelegatesToLink(t *testing.T) {
 	}
 }
 
-// TestLocalBlobLifecycleConvertMigratedRepoBlobToMarkerIsNoOp covers the local
-// hardlink lifecycle's ConvertMigratedRepoBlobToMarker: unlike the remote/marker
-// lifecycle, local storage keeps hardlinks in each repo, so no marker conversion is
-// needed - it must always return nil without touching the driver.
-func TestLocalBlobLifecycleConvertMigratedRepoBlobToMarkerIsNoOp(t *testing.T) {
+// Local migration keeps each repository hardlink after promoting the canonical blob.
+func TestLocalBlobLifecycleRemoveMigratedRepoBlobIsNoOp(t *testing.T) {
 	driverStub := &lifecycleStubDriver{
 		nameFn: func() string { return constants.LocalStorageDriverName },
 		linkFn: func(src, dst string) error {
-			t.Fatal("ConvertMigratedRepoBlobToMarker must not touch the driver on local storage")
+			t.Fatal("RemoveMigratedRepoBlob must not touch the driver on local storage")
 
 			return nil
 		},
@@ -217,7 +206,7 @@ func TestLocalBlobLifecycleConvertMigratedRepoBlobToMarkerIsNoOp(t *testing.T) {
 
 	lifecycle := newBlobLifecycle(driverStub)
 
-	if err := lifecycle.ConvertMigratedRepoBlobToMarker("global/blob", "repo/blob"); err != nil {
+	if err := lifecycle.RemoveMigratedRepoBlob("global/blob", "repo/blob"); err != nil {
 		t.Fatalf("expected nil error, got %v", err)
 	}
 }
@@ -498,20 +487,13 @@ func TestRemoteBlobLifecyclePromoteErrorPaths(t *testing.T) {
 	})
 }
 
-func TestRemoteBlobLifecycleLinkCreatesMarker(t *testing.T) {
+func TestRemoteBlobLifecycleLinkDoesNotCreateRepoObject(t *testing.T) {
 	called := false
-
-	var writtenPath string
-
-	var marker []byte
 
 	driverStub := &lifecycleStubDriver{
 		nameFn: func() string { return constants.S3StorageDriverName },
 		putContent: func(path string, content []byte) {
 			called = true
-			writtenPath = path
-
-			marker = append([]byte(nil), content...)
 		},
 	}
 
@@ -521,16 +503,8 @@ func TestRemoteBlobLifecycleLinkCreatesMarker(t *testing.T) {
 		t.Fatalf("remote link: %v", err)
 	}
 
-	if !called {
-		t.Fatal("expected remote link to delegate to underlying driver")
-	}
-
-	if writtenPath != "dst/blob" {
-		t.Fatalf("unexpected destination path: %s", writtenPath)
-	}
-
-	if len(marker) != 0 {
-		t.Fatal("remote link should create an empty marker content")
+	if called {
+		t.Fatal("remote link must not create a repository object")
 	}
 }
 

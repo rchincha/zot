@@ -73,6 +73,7 @@ type blobRefIndexer interface {
 	PutBlobRef(digest digest.Digest, path string) error
 	DeleteBlobRef(digest digest.Digest, path string) error
 	GetBlobRefs(digest digest.Digest) ([]string, error)
+	GetAllBlobRefs() (map[digest.Digest][]string, error)
 }
 
 var _ blobRefIndexer = (*BoltDBDriver)(nil)
@@ -133,6 +134,10 @@ func TestBoltDBGetBlobRefs(t *testing.T) {
 			refs, err := cacheDriver.GetBlobRefs(testDigest)
 			So(err, ShouldBeNil)
 			So(refs, ShouldContain, "/repo1/blob")
+
+			allRefs, err := cacheDriver.GetAllBlobRefs()
+			So(err, ShouldBeNil)
+			So(allRefs[testDigest], ShouldContain, "/repo1/blob")
 
 			Convey("a second PutBlob for the same digest adds another ref", func() {
 				err := cacheDriver.PutBlob(testDigest, "/repo2/blob")

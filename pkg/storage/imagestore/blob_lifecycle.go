@@ -16,11 +16,8 @@ import (
 )
 
 // blobLifecycle encapsulates the operations that differ between local storage, which
-// dedupes via real hardlinks, and a remote backend (S3/GCS/Azure), which has no hardlink
-// equivalent and instead dedupes by keeping one real copy in the global blobstore repo
-// (_blobstore/) and writing empty "marker" files at every other repo path that references
-// it, redirecting reads to the global copy. Implementations are behavior-preserving
-// adapters for the existing local/remote flows.
+// dedupes via real hardlinks, and remote storage, which keeps payloads only in the
+// global blobstore while repository ownership is tracked separately.
 type blobLifecycle interface {
 	// PromoteCandidate moves/copies a blob from a repo's local path into the global
 	// blobstore, making it the canonical copy for that digest. Local: hardlink (cheap,
@@ -28,20 +25,17 @@ type blobLifecycle interface {
 	// its own yet).
 	PromoteCandidate(srcPath, dstPath string) error
 
-	// ConvertMigratedRepoBlobToMarker runs once per pre-existing repo blob during the
+	// RemoveMigratedRepoBlob runs once per pre-existing repo blob during the
 	// one-time upgrade to the global blobstore (see upgradeToGlobalBlobstore): after
 	// PromoteCandidate has copied one repo's blob into the global blobstore as the new
 	// canonical copy, every *other* repo that already held a full, real copy of the same
-	// digest must have that copy replaced by a marker, so the content only exists once.
+	// digest must have that copy removed, so the content only exists once.
 	// Local: no-op - local repos already dedupe via hardlinks to a shared inode, so there
-	// is nothing to convert. Remote: writes an empty marker at repoBlobPath (see LinkBlob),
-	// replacing what was previously a full duplicate.
-	ConvertMigratedRepoBlobToMarker(globalBlobPath, repoBlobPath string) error
+	// is nothing to convert. Remote: deletes repoBlobPath after promotion is verified.
+	RemoveMigratedRepoBlob(globalBlobPath, repoBlobPath string) error
 
-	// LinkBlob records repoBlobPath (dstPath) as a reference to an existing blob at
-	// srcPath during normal (non-migration) dedupe - e.g. a push whose content already
-	// exists under a different repo or digest-only path. Local: hardlink. Remote: writes
-	// an empty marker file; the real content is read back through ResolveReadPath instead.
+	// LinkBlob links repoBlobPath (dstPath) to existing content at srcPath during normal
+	// dedupe. Local: hardlink. Remote: no-op; the caller records logical ownership.
 	LinkBlob(srcPath, dstPath string) error
 
 	// ResolveReadPath picks which path a read should actually use for blobPath. Local:
@@ -64,13 +58,9 @@ type blobLifecycle interface {
 		isDigestReferenced func(godigest.Digest) (bool, error),
 	) (bool, error)
 
-	// ShouldGateDeleteUntilRebuild reports whether deletes must wait until
-	// RunDedupeBlobs's startup rebuild has walked every pre-existing blob (see
-	// dedupeRebuildDone). Local: false - ShouldDeleteGlobalBlob's nlink check doesn't
-	// depend on the cache being warm. Remote: true - reference-checking is entirely
-	// cache-based here, so deleting before the rebuild completes risks deleting a blob
-	// the cache doesn't know is still referenced elsewhere yet.
-	ShouldGateDeleteUntilRebuild() bool
+	// UsesLogicalRepoRefs reports whether dedupe ownership is represented only in
+	// metadata. Local storage returns false because each repo has a hardlink.
+	UsesLogicalRepoRefs() bool
 
 	// IncludeRepoInMountCandidates reports whether repo should be considered a candidate
 	// source for cross-repo blob mount/dedupe lookups (see GetAllDedupeReposCandidates).
@@ -79,8 +69,8 @@ type blobLifecycle interface {
 	IncludeRepoInMountCandidates(repo string) bool
 }
 
-// resolveReadPathWithCache is localHardlinkBlobLifecycle.ResolveReadPath's body (remote
-// has its own, globalBlobPath-based logic - see remoteMarkerBlobLifecycle.ResolveReadPath).
+// resolveReadPathWithCache is localHardlinkBlobLifecycle.ResolveReadPath's body; remote
+// shared storage resolves directly from the global blob path.
 // blobSize is blobPath's on-disk size, as already Stat'd by the caller.
 //
 //   - blobSize > 0: blobPath's hardlink already holds the real content (its Stat size is
@@ -112,7 +102,7 @@ func newBlobLifecycle(storeDriver storageTypes.Driver) blobLifecycle {
 		return &localHardlinkBlobLifecycle{storeDriver: storeDriver, statFn: os.Stat}
 	}
 
-	return &remoteMarkerBlobLifecycle{storeDriver: storeDriver}
+	return &remoteSharedBlobLifecycle{storeDriver: storeDriver}
 }
 
 type localHardlinkBlobLifecycle struct {
@@ -127,7 +117,7 @@ func (l *localHardlinkBlobLifecycle) PromoteCandidate(srcPath, dstPath string) e
 	return l.storeDriver.Link(srcPath, dstPath)
 }
 
-func (l *localHardlinkBlobLifecycle) ConvertMigratedRepoBlobToMarker(_, _ string) error {
+func (l *localHardlinkBlobLifecycle) RemoveMigratedRepoBlob(_, _ string) error {
 	// Local filesystem keeps hardlinks in repos; no marker conversion is needed.
 	return nil
 }
@@ -190,7 +180,7 @@ func hardLinkCount(fileInfo os.FileInfo) (uint64, bool) {
 	return nLink.Uint(), true
 }
 
-func (l *localHardlinkBlobLifecycle) ShouldGateDeleteUntilRebuild() bool {
+func (l *localHardlinkBlobLifecycle) UsesLogicalRepoRefs() bool {
 	return false
 }
 
@@ -198,11 +188,11 @@ func (l *localHardlinkBlobLifecycle) IncludeRepoInMountCandidates(repo string) b
 	return repo != constants.GlobalBlobsRepo
 }
 
-type remoteMarkerBlobLifecycle struct {
+type remoteSharedBlobLifecycle struct {
 	storeDriver storageTypes.Driver
 }
 
-func (r *remoteMarkerBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
+func (r *remoteSharedBlobLifecycle) PromoteCandidate(srcPath, dstPath string) error {
 	blobReader, err := r.storeDriver.Reader(srcPath, 0)
 	if err != nil {
 		return err
@@ -244,15 +234,15 @@ func (r *remoteMarkerBlobLifecycle) PromoteCandidate(srcPath, dstPath string) er
 	return nil
 }
 
-func (r *remoteMarkerBlobLifecycle) ConvertMigratedRepoBlobToMarker(globalBlobPath, repoBlobPath string) error {
-	return r.LinkBlob(globalBlobPath, repoBlobPath)
+func (r *remoteSharedBlobLifecycle) RemoveMigratedRepoBlob(globalBlobPath, repoBlobPath string) error {
+	return r.storeDriver.Delete(repoBlobPath)
 }
 
-func (r *remoteMarkerBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
-	return r.storeDriver.Link(srcPath, dstPath)
+func (r *remoteSharedBlobLifecycle) LinkBlob(srcPath, dstPath string) error {
+	return nil
 }
 
-func (r *remoteMarkerBlobLifecycle) ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest,
+func (r *remoteSharedBlobLifecycle) ResolveReadPath(blobPath, globalBlobPath string, digest godigest.Digest,
 	blobSize int64, _ func(godigest.Digest) (string, error),
 ) (string, error) {
 	if globalBlobPath != "" {
@@ -273,7 +263,7 @@ func (r *remoteMarkerBlobLifecycle) ResolveReadPath(blobPath, globalBlobPath str
 	return "", zerr.ErrBlobNotFound
 }
 
-func (r *remoteMarkerBlobLifecycle) ShouldDeleteGlobalBlob(_ string, digest godigest.Digest,
+func (r *remoteSharedBlobLifecycle) ShouldDeleteGlobalBlob(_ string, digest godigest.Digest,
 	isDigestReferenced func(godigest.Digest) (bool, error),
 ) (bool, error) {
 	isReferenced, err := isDigestReferenced(digest)
@@ -284,10 +274,10 @@ func (r *remoteMarkerBlobLifecycle) ShouldDeleteGlobalBlob(_ string, digest godi
 	return !isReferenced, nil
 }
 
-func (r *remoteMarkerBlobLifecycle) ShouldGateDeleteUntilRebuild() bool {
+func (r *remoteSharedBlobLifecycle) UsesLogicalRepoRefs() bool {
 	return true
 }
 
-func (r *remoteMarkerBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
+func (r *remoteSharedBlobLifecycle) IncludeRepoInMountCandidates(repo string) bool {
 	return repo != constants.GlobalBlobsRepo
 }

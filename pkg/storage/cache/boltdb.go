@@ -313,6 +313,41 @@ func (d *BoltDBDriver) GetBlobRefs(digest godigest.Digest) ([]string, error) {
 	return blobPaths, nil
 }
 
+func (d *BoltDBDriver) GetAllBlobRefs() (map[godigest.Digest][]string, error) {
+	allRefs := map[godigest.Digest][]string{}
+
+	err := d.db.View(func(tx *bbolt.Tx) error {
+		root := tx.Bucket([]byte(constants.BlobRefs))
+		if root == nil {
+			return zerr.ErrCacheRootBucket
+		}
+
+		return root.ForEach(func(key, value []byte) error {
+			if value != nil {
+				return nil
+			}
+
+			digest := godigest.Digest(string(key))
+			if err := digest.Validate(); err != nil {
+				return nil
+			}
+
+			bucket := root.Bucket(key)
+			if bucket == nil {
+				return nil
+			}
+
+			return bucket.ForEach(func(ref, _ []byte) error {
+				allRefs[digest] = append(allRefs[digest], string(ref))
+
+				return nil
+			})
+		})
+	})
+
+	return allRefs, err
+}
+
 // PutBlobRef and DeleteBlobRef are no-ops: PutBlob/DeleteBlob already write/remove the
 // BlobRefs entry as part of the same transaction (see putBlobRef/deleteBlobRef above).
 // They exist only so BoltDBDriver satisfies imagestore's blobRefIndexer interface -
