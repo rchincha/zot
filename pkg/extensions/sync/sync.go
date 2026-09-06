@@ -9,6 +9,7 @@ import (
 	"time"
 
 	godigest "github.com/opencontainers/go-digest"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/ref"
 
 	syncconf "zotregistry.dev/zot/v2/pkg/extensions/config/sync"
@@ -39,6 +40,15 @@ type Service interface {
 	// Returns whether an upstream manifest check is due for repo:reference.
 	// Always true unless manifestCheckInterval is configured and a recent check succeeded.
 	ShouldCheckUpstream(repo, reference string) bool
+	// FetchManifest fetches repo:reference's manifest directly from upstream, without touching
+	// local storage. For a multi-arch reference the second return value carries each platform's
+	// child manifest, since a streaming caller needs those staged individually. Applies the same
+	// OnlySigned/content-filter policy SyncImage applies, so a manifest that would be rejected by
+	// a plain sync is never returned here either. Used by on-demand streaming.
+	FetchManifest(ctx context.Context, repo, reference string) (manifest.Manifest, []manifest.Manifest, error)
+	// IsStreamingForRepo reports whether this service streams blobs to clients for repo while
+	// syncing them from upstream, rather than only serving them once fully synced.
+	IsStreamingForRepo(repo string) bool
 }
 
 // Registry interface must be implemented by local and remote registries.
@@ -81,8 +91,11 @@ type Remote interface {
 	// Get a list of tags given a repo
 	GetTags(ctx context.Context, repo string) ([]string, error)
 	/* Get oci digest for repo:tag as regclient mod.WithManifestToOCI would produce:
-	predicted digest, original remote digest, whether mod.Apply would modify the image, error */
-	GetOCIDigest(ctx context.Context, repo, tag string) (godigest.Digest, godigest.Digest, bool, error)
+	predicted digest, original remote digest, whether mod.Apply would modify the image, the
+	digests of every distributable blob (config + layers) referenced by the manifest tree
+	(deduplicated; used to skip re-fetching blobs already present in local storage), error */
+	GetOCIDigest(ctx context.Context, repo, tag string) (
+		godigest.Digest, godigest.Digest, bool, []godigest.Digest, error)
 	// Get remote digest for repo:tag
 	GetDigest(ctx context.Context, repo, tag string) (godigest.Digest, error)
 }
