@@ -16,6 +16,7 @@ import (
 	"github.com/regclient/regclient/types/ref"
 
 	zerr "zotregistry.dev/zot/v2/errors"
+	storageCommon "zotregistry.dev/zot/v2/pkg/storage/common"
 )
 
 const (
@@ -105,10 +106,15 @@ func (walkState *manifestTreeWalkState) leavePath(digest string) {
 	walkState.depth--
 }
 
-// predictOCIDigest returns the digest regclient mod.WithManifestToOCI would produce,
-// the original remote digest, and whether mod.Apply would modify the image.
+// predictOCIDigest returns the digest regclient mod.WithManifestToOCI would produce, the
+// original remote digest, whether mod.Apply would modify the image, and the digests of every
+// distributable blob (config + layers) referenced anywhere in the manifest tree, deduplicated.
+// The blob digests are collected from the tree as fetched from upstream, before any in-memory
+// OCI conversion below: the actual bytes ImageCopy transfers are the original upstream blobs -
+// conversion happens separately, on the already-synced local copy - so this must reflect what
+// will really be requested from upstream, not the predicted post-conversion shape.
 func predictOCIDigest(ctx context.Context, regClient *regclient.RegClient, imageRef ref.Ref) (
-	godigest.Digest, godigest.Digest, bool, error,
+	godigest.Digest, godigest.Digest, bool, []godigest.Digest, error,
 ) {
 	walkState := &manifestTreeWalkState{
 		path: make(map[string]struct{}),
@@ -116,7 +122,7 @@ func predictOCIDigest(ctx context.Context, regClient *regclient.RegClient, image
 
 	root, err := fetchManifestNode(ctx, regClient, imageRef, true, walkState)
 	if err != nil {
-		return "", "", false, err
+		return "", "", false, nil, err
 	}
 
 	defer closeManifestTree(ctx, regClient, root)
@@ -127,19 +133,29 @@ func predictOCIDigest(ctx context.Context, regClient *regclient.RegClient, image
 	case mediatype.Docker2Manifest, mediatype.Docker2ManifestList,
 		mediatype.OCI1Manifest, mediatype.OCI1ManifestList:
 	default:
-		return "", "", false, zerr.ErrMediaTypeNotSupported
+		return "", "", false, nil, zerr.ErrMediaTypeNotSupported
+	}
+
+	blobDigestSet := map[godigest.Digest]struct{}{}
+	if err := collectBlobDigests(root, blobDigestSet); err != nil {
+		return "", "", false, nil, err
+	}
+
+	blobDigests := make([]godigest.Digest, 0, len(blobDigestSet))
+	for digest := range blobDigestSet {
+		blobDigests = append(blobDigests, digest)
 	}
 
 	if err := root.applyManifestToOCI(); err != nil {
-		return "", "", false, err
+		return "", "", false, nil, err
 	}
 
 	if err := root.applyOCIReferrers(); err != nil {
-		return "", "", false, err
+		return "", "", false, nil, err
 	}
 
 	if err := root.finalize(); err != nil {
-		return "", "", false, err
+		return "", "", false, nil, err
 	}
 
 	predictedDigest := root.effectiveDesc().Digest
@@ -147,7 +163,53 @@ func predictOCIDigest(ctx context.Context, regClient *regclient.RegClient, image
 	// (e.g. docker children under an oci index), not only when the root is docker.
 	isConverted := root.mod != manifestUnchanged || predictedDigest != originalDigest
 
-	return predictedDigest, originalDigest, isConverted, nil
+	return predictedDigest, originalDigest, isConverted, blobDigests, nil
+}
+
+// collectBlobDigests recurses through the manifest tree (children first, mirroring the other
+// tree walkers in this file) and adds the config and layer digests of every non-list manifest to
+// out. Non-distributable (foreign) layers are skipped since they are never fetched from or
+// stored by zot itself - see storageCommon.IsNonDistributable, applied identically to blob
+// copying in destination.go's copyManifest.
+func collectBlobDigests(node *manifestNode, out map[godigest.Digest]struct{}) error {
+	for _, child := range node.children {
+		if err := collectBlobDigests(child, out); err != nil {
+			return err
+		}
+	}
+
+	if node.m == nil {
+		return nil
+	}
+
+	imager, ok := node.m.(manifest.Imager)
+	if !ok {
+		// Manifest lists/indexes have no config/layers of their own; their children
+		// (already visited above) carry the actual blobs.
+		return nil
+	}
+
+	configDesc, err := imager.GetConfig()
+	if err != nil {
+		return err
+	}
+
+	out[configDesc.Digest] = struct{}{}
+
+	layers, err := imager.GetLayers()
+	if err != nil {
+		return err
+	}
+
+	for _, layer := range layers {
+		if storageCommon.IsNonDistributable(layer.MediaType) {
+			continue
+		}
+
+		out[layer.Digest] = struct{}{}
+	}
+
+	return nil
 }
 
 func fetchManifestNode(ctx context.Context, regClient *regclient.RegClient, imageRef ref.Ref, top bool,

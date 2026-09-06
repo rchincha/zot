@@ -187,21 +187,22 @@ func (registry *RemoteRegistry) GetDigest(ctx context.Context, repo, tag string,
 }
 
 // GetOCIDigest returns the digest predictOCIDigest computes after regclient
-// mod.WithManifestToOCI conversion, the original remote digest, and whether
-// mod.Apply would modify the image.
+// mod.WithManifestToOCI conversion, the original remote digest, whether
+// mod.Apply would modify the image, and the digests of every distributable blob
+// referenced by the manifest tree.
 func (registry *RemoteRegistry) GetOCIDigest(ctx context.Context, repo, tag string,
-) (godigest.Digest, godigest.Digest, bool, error) {
+) (godigest.Digest, godigest.Digest, bool, []godigest.Digest, error) {
 	imageReference, err := registry.GetImageReference(repo, tag)
 	if err != nil {
-		return "", "", false, err
+		return "", "", false, nil, err
 	}
 
-	predicted, original, isConverted, err := predictOCIDigest(ctx, registry.client, imageReference)
+	predicted, original, isConverted, blobDigests, err := predictOCIDigest(ctx, registry.client, imageReference)
 	if err != nil {
-		return "", "", false, registry.translateManifestErr(imageReference, err)
+		return "", "", false, nil, registry.translateManifestErr(imageReference, err)
 	}
 
-	return predicted, original, isConverted, nil
+	return predicted, original, isConverted, blobDigests, nil
 }
 
 func (registry *RemoteRegistry) GetTags(ctx context.Context, repo string) ([]string, error) {

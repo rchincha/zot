@@ -18,6 +18,7 @@ import (
 	"github.com/regclient/regclient"
 	"github.com/regclient/regclient/mod"
 	"github.com/regclient/regclient/types/descriptor"
+	"github.com/regclient/regclient/types/manifest"
 	"github.com/regclient/regclient/types/mediatype"
 	"github.com/regclient/regclient/types/ref"
 	"github.com/stretchr/testify/assert"
@@ -197,7 +198,7 @@ func TestPredictOCIDigestManifestTreeLimits(t *testing.T) {
 		srcRef := mustOCIDirRef(t, writeDeepIndexChain(t, "deep-index-chain", predictTestTag, maxManifestTreeDepth+1),
 			predictTestTag)
 
-		_, _, _, err := predictOCIDigest(ctx, regClient, srcRef)
+		_, _, _, _, err := predictOCIDigest(ctx, regClient, srcRef)
 		require.Error(t, err)
 		require.ErrorIs(t, err, errManifestTreeLimitExceeded)
 		assert.Contains(t, err.Error(), "depth")
@@ -209,7 +210,7 @@ func TestPredictOCIDigestManifestTreeLimits(t *testing.T) {
 		srcRef := mustOCIDirRef(t, writeWideOCIIndex(t, "wide-index", predictTestTag, maxManifestTreeNodes+1),
 			predictTestTag)
 
-		_, _, _, err := predictOCIDigest(ctx, regClient, srcRef)
+		_, _, _, _, err := predictOCIDigest(ctx, regClient, srcRef)
 		require.Error(t, err)
 		require.ErrorIs(t, err, errManifestTreeLimitExceeded)
 		assert.Contains(t, err.Error(), "node count")
@@ -253,7 +254,7 @@ func TestPredictOCIDigestErrorPaths(t *testing.T) {
 
 		srcRef := mustOCIDirRef(t, writeUnsupportedRootMediaType(t, "unsupported-root", predictTestTag), predictTestTag)
 
-		_, _, _, err := predictOCIDigest(ctx, regClient, srcRef)
+		_, _, _, _, err := predictOCIDigest(ctx, regClient, srcRef)
 		require.Error(t, err)
 		require.True(t, errors.Is(err, zerr.ErrMediaTypeNotSupported) || strings.Contains(err.Error(), "unsupported media type"))
 	})
@@ -288,6 +289,73 @@ func TestPredictOCIDigestDockerLayerMediaTypes(t *testing.T) {
 	assertPredictMatchesRegclientApply(t, ctx, regClient, srcRef)
 }
 
+// TestPredictOCIDigestBlobDigests covers the blob-digest collection predictOCIDigest does for
+// pkg/extensions/sync/blob_reuse.go's preseedLocalBlobs (issue #4386: reuse blobs already synced
+// locally instead of re-fetching them from upstream on every tag).
+func TestPredictOCIDigestBlobDigests(t *testing.T) {
+	t.Parallel()
+
+	ctx := context.Background()
+	regClient := regclient.New()
+
+	t.Run("plain manifest: config and every layer are collected", func(t *testing.T) {
+		t.Parallel()
+
+		root, storeCtrl := newTestStore(t)
+		writeOCISingleManifest(t, storeCtrl, root, "repo-a", predictTestTag)
+
+		srcRef := mustOCIDirRef(t, repoPath(root, "repo-a"), predictTestTag)
+
+		_, _, _, blobDigests, err := predictOCIDigest(ctx, regClient, srcRef)
+		require.NoError(t, err)
+
+		man, err := regClient.ManifestGet(ctx, srcRef)
+		require.NoError(t, err)
+		defer regClient.Close(ctx, man.GetRef())
+
+		imager, ok := man.(manifest.Imager)
+		require.True(t, ok)
+
+		configDesc, err := imager.GetConfig()
+		require.NoError(t, err)
+		layers, err := imager.GetLayers()
+		require.NoError(t, err)
+
+		assert.Len(t, blobDigests, 1+len(layers))
+		assert.Contains(t, blobDigests, configDesc.Digest)
+
+		for _, layer := range layers {
+			assert.Contains(t, blobDigests, layer.Digest)
+		}
+	})
+
+	t.Run("multi-platform index: a shared base layer is collected once, not once per platform", func(t *testing.T) {
+		t.Parallel()
+
+		root, storeCtrl := newTestStore(t)
+		// platformImages() gives every platform the exact same DefaultLayers() content (only the
+		// per-platform config differs), so this is a real shared-base-layer fixture, not a
+		// coincidence of the assertion below.
+		writeOCIMultiPlatformIndex(t, storeCtrl, root, "repo-multi", predictTestTag)
+
+		srcRef := mustOCIDirRef(t, repoPath(root, "repo-multi"), predictTestTag)
+
+		_, _, _, blobDigests, err := predictOCIDigest(ctx, regClient, srcRef)
+		require.NoError(t, err)
+
+		numPlatforms := len(platformImages())
+		numSharedLayers := len(GetDefaultLayers())
+
+		// One distinct config digest per platform, plus the layers shared across all of them -
+		// counted once each, not numPlatforms times.
+		assert.Len(t, blobDigests, numPlatforms+numSharedLayers)
+
+		for _, layer := range GetDefaultLayers() {
+			assert.Contains(t, blobDigests, layer.Digest)
+		}
+	})
+}
+
 func TestManifestNodeHelpers(t *testing.T) {
 	t.Parallel()
 
@@ -318,7 +386,7 @@ func assertPredictMatchesRegclientApply(
 ) {
 	t.Helper()
 
-	predicted, original, isConverted, predictErr := predictOCIDigest(ctx, regClient, srcRef)
+	predicted, original, isConverted, _, predictErr := predictOCIDigest(ctx, regClient, srcRef)
 	applied, applyErr := regclientApplyOCIDigest(t, ctx, regClient, srcRef)
 
 	require.Equal(t, predictErr != nil, applyErr != nil,

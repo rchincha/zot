@@ -103,6 +103,22 @@ type RegistryConfig struct {
 	// exists to avoid, since concurrent HTTP/1.1 connections beyond 2 would get closed instead of
 	// pooled.
 	MaxIdleConnsPerHost *int
+	// Stream, when true, streams a blob to the client as it is being downloaded from this
+	// upstream, instead of waiting for the full download and local commit to finish first.
+	// Requires OnDemand; see validateRegistryStreamingSyncConfig for the full set of
+	// restrictions (incompatible with MaxRetries/RetryDelay and TLSVerify: false, requires
+	// PreserveDigest).
+	Stream *bool
+	// MaxConcurrentStreams caps how many distinct blobs this registry's stream manager will
+	// stream to clients at once. Once the cap is reached, a new on-demand request for this
+	// registry falls back to the ordinary (non-streaming) on-demand path. When unset, a small
+	// built-in default is used (see defaultMaxConcurrentStreams in pkg/extensions/sync).
+	MaxConcurrentStreams *int
+}
+
+// IsStreamEnabled returns true if streaming is enabled for this registry config.
+func (r RegistryConfig) IsStreamEnabled() bool {
+	return r.Stream != nil && *r.Stream
 }
 
 // OAuth2HelperConfig holds the options used by the "oauth2" credential helper,

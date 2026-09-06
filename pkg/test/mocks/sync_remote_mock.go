@@ -12,7 +12,7 @@ type SyncRemoteMock struct {
 	GetHostNameFn       func() string
 	GetRepositoriesFn   func(ctx context.Context) ([]string, error)
 	GetTagsFn           func(ctx context.Context, repo string) ([]string, error)
-	GetOCIDigestFn      func(ctx context.Context, repo, tag string) (digest.Digest, digest.Digest, bool, error)
+	GetOCIDigestFn      func(ctx context.Context, repo, tag string) (digest.Digest, digest.Digest, bool, []digest.Digest, error)
 	GetDigestFn         func(ctx context.Context, repo, tag string) (digest.Digest, error)
 	GetImageReferenceFn func(repo string, tag string) (ref.Ref, error)
 }
@@ -44,13 +44,13 @@ func (remote SyncRemoteMock) GetTags(ctx context.Context, repo string) ([]string
 }
 
 func (remote SyncRemoteMock) GetOCIDigest(ctx context.Context, repo, tag string) (
-	digest.Digest, digest.Digest, bool, error,
+	digest.Digest, digest.Digest, bool, []digest.Digest, error,
 ) {
 	if remote.GetOCIDigestFn != nil {
 		return remote.GetOCIDigestFn(ctx, repo, tag)
 	}
 
-	return digest.Digest("sha256:abc123"), digest.Digest("sha256:def456"), false, nil
+	return digest.Digest("sha256:abc123"), digest.Digest("sha256:def456"), false, nil, nil
 }
 
 func (remote SyncRemoteMock) GetDigest(ctx context.Context, repo, tag string) (digest.Digest, error) {
