@@ -9,10 +9,11 @@ import (
 
 type SyncRemoteMock struct {
 	// Methods required by sync Remote interface.
-	GetHostNameFn       func() string
-	GetRepositoriesFn   func(ctx context.Context) ([]string, error)
-	GetTagsFn           func(ctx context.Context, repo string) ([]string, error)
-	GetOCIDigestFn      func(ctx context.Context, repo, tag string) (digest.Digest, digest.Digest, bool, []digest.Digest, error)
+	GetHostNameFn     func() string
+	GetRepositoriesFn func(ctx context.Context) ([]string, error)
+	GetTagsFn         func(ctx context.Context, repo string) ([]string, error)
+	GetOCIDigestFn    func(ctx context.Context, repo, tag string) (
+		digest.Digest, digest.Digest, bool, []digest.Digest, error)
 	GetDigestFn         func(ctx context.Context, repo, tag string) (digest.Digest, error)
 	GetImageReferenceFn func(repo string, tag string) (ref.Ref, error)
 }
