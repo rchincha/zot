@@ -775,7 +775,7 @@ func TestService(t *testing.T) {
 
 			runConcurrentDedup(t, &onDemand.imageFlight, onDemandKey("dedup-repo", "dedup-tag"), &syncCalls, nil,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag")
+					return onDemand.syncImage(ctx, "dedup-repo", "dedup-tag", -1)
 				})
 		})
 
@@ -796,7 +796,7 @@ func TestService(t *testing.T) {
 
 			runConcurrentDedup(t, &onDemand.imageFlight, onDemandKey("dedup-repo-err", "dedup-tag"), &syncCalls, wantErr,
 				func(ctx context.Context) error {
-					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag")
+					return onDemand.syncImage(ctx, "dedup-repo-err", "dedup-tag", -1)
 				})
 		})
 

@@ -106,7 +106,18 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 
 	var lastErr error
 
-	for _, service := range onDemand.services {
+	// selectedIdx pins the background sync below to the exact service that supplied the
+	// manifest. Restricting candidates here to IsStreamingForRepo matters beyond consistency:
+	// with overlapping registry content rules, an earlier non-streaming service (which may not
+	// meet validateRegistryStreamingSyncConfig's TLS requirements) could otherwise supply a
+	// manifest that gets staged and served as if it came from a TLS-verified upstream.
+	selectedIdx := -1
+
+	for idx, service := range onDemand.services {
+		if !service.IsStreamingForRepo(repo) {
+			continue
+		}
+
 		onDemand.log.Debug().Str("repo", repo).Str("reference", reference).Msg("attempting to fetch manifest")
 
 		fetchedManifest, subs, err := service.FetchManifest(ctx, repo, reference)
@@ -117,6 +128,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 		}
 
 		resultManifest, subManifests = fetchedManifest, subs
+		selectedIdx = idx
 
 		break
 	}
@@ -141,7 +153,7 @@ func (onDemand *BaseOnDemand) FetchManifestForStream(ctx context.Context, repo, 
 
 	go func() {
 		syncCtx := context.WithoutCancel(ctx)
-		if err := onDemand.SyncImage(syncCtx, repo, reference); err != nil {
+		if err := onDemand.syncImageDeduped(syncCtx, repo, reference, selectedIdx); err != nil {
 			onDemand.log.Err(err).Str("repository", repo).Str("reference", reference).
 				Msg("background sync after streaming failed")
 		}
@@ -169,6 +181,18 @@ func onDemandKey(repo, reference string) string {
 }
 
 func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference string) error {
+	return onDemand.syncImageDeduped(ctx, repo, reference, -1)
+}
+
+// syncImageDeduped runs the singleflight-deduped image sync for repo:reference, optionally
+// pinned to a single service by its index into onDemand.services (pinnedIdx < 0 means try every
+// service in order, as SyncImage always does). FetchManifestForStream's background sync pins to
+// the exact streaming-eligible service that supplied the manifest, so that service - the one
+// validateRegistryStreamingSyncConfig verified is TLS-verified - is also the one whose syncRef
+// installs the stream manager's reader hook for the blobs already staged under that manifest;
+// letting a different, unpinned service win the sync would leave those staged blobs with no
+// reader hook, hanging every attached client until DescriptorWithTimeout gives up.
+func (onDemand *BaseOnDemand) syncImageDeduped(ctx context.Context, repo, reference string, pinnedIdx int) error {
 	key := onDemandKey(repo, reference)
 
 	// leader is set only in the closure that actually runs; waiters never execute it.
@@ -177,7 +201,7 @@ func (onDemand *BaseOnDemand) SyncImage(ctx context.Context, repo, reference str
 	_, err, shared := onDemand.imageFlight.Do(key, func() (any, error) {
 		leader = true
 
-		return nil, onDemand.syncImage(ctx, repo, reference)
+		return nil, onDemand.syncImage(ctx, repo, reference, pinnedIdx)
 	})
 
 	// singleflight sets shared for every participant when dups > 0, including the leader.
@@ -290,10 +314,14 @@ func (onDemand *BaseOnDemand) syncReferrers(ctx context.Context, repo, subjectDi
 	return err
 }
 
-func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string) error {
+func (onDemand *BaseOnDemand) syncImage(ctx context.Context, repo, reference string, pinnedIdx int) error {
 	var err error
 
 	for serviceID, service := range onDemand.services {
+		if pinnedIdx >= 0 && serviceID != pinnedIdx {
+			continue
+		}
+
 		timeout := service.GetSyncTimeout()
 
 		onDemand.log.Debug().
