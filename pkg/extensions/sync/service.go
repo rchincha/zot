@@ -543,11 +543,45 @@ func (service *BaseService) SyncImage(ctx context.Context, repo, reference strin
 		service.log.Error().Err(err).Msg("failed to refresh credentials")
 	}
 
-	if err := service.syncImage(ctx, repo, remoteRepo, reference, nil, false); err != nil {
+	if err := service.syncImage(ctx, repo, remoteRepo, reference, nil, false, ""); err != nil {
 		return err
 	}
 
 	service.markUpstreamChecked(repo, reference)
+
+	return nil
+}
+
+// SyncImageAtDigest is SyncImage, except the remote fetch is pinned to digest instead of being
+// resolved fresh from tag - see PinnedSyncer's doc comment for why a caller would want that. The
+// local commit is still keyed by tag, exactly as SyncImage does.
+func (service *BaseService) SyncImageAtDigest(ctx context.Context, repo, tag string, digest godigest.Digest) error {
+	remoteRepo := repo
+
+	remoteURL := service.remote.GetHostName()
+
+	if len(service.config.Content) > 0 {
+		remoteRepo = service.contentManager.GetRepoSource(repo)
+		if remoteRepo == "" {
+			service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", tag).
+				Msg("will not sync image, filtered out by content")
+
+			return zerr.ErrSyncImageFilteredOut
+		}
+	}
+
+	service.log.Info().Str("remote", remoteURL).Str("repo", repo).Str("reference", tag).
+		Str("digest", digest.String()).Msg("sync: syncing image pinned to digest")
+
+	if err := service.refreshRegistryTemporaryCredentials(); err != nil {
+		service.log.Error().Err(err).Msg("failed to refresh credentials")
+	}
+
+	if err := service.syncImage(ctx, repo, remoteRepo, tag, nil, false, digest); err != nil {
+		return err
+	}
+
+	service.markUpstreamChecked(repo, tag)
 
 	return nil
 }
@@ -681,7 +715,7 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 			continue
 		}
 
-		err = service.syncImage(ctx, localRepo, repo, tag, tags, true)
+		err = service.syncImage(ctx, localRepo, repo, tag, tags, true, "")
 		if err != nil {
 			if errors.Is(err, zerr.ErrSyncImageNotSigned) ||
 				errors.Is(err, zerr.ErrUnauthorizedAccess) ||
@@ -709,20 +743,18 @@ func (service *BaseService) SyncRepo(ctx context.Context, repo string) error {
 	return nil
 }
 
+// syncRef copies remoteImageRef to localImageRef. reference is the repo:reference key this sync
+// was originally requested under (a tag, or a digest string for a referrer/signature sync) - kept
+// as an explicit parameter, distinct from remoteImageRef, because a pinned sync's remoteImageRef
+// targets a digest for the actual fetch while reference must still match whatever key
+// FetchManifestForStream staged this entry under, for the streaming-hook-install check below to
+// find it.
 func (service *BaseService) syncRef(ctx context.Context, localRepo string, remoteImageRef, localImageRef ref.Ref,
-	remoteDigest godigest.Digest, blobDigests []godigest.Digest,
+	remoteDigest godigest.Digest, blobDigests []godigest.Digest, reference string,
 ) (bool, error) {
-	var reference string
-
 	var skipImage bool
 
 	var err error
-
-	if remoteImageRef.Tag != "" {
-		reference = remoteImageRef.Tag
-	} else {
-		reference = remoteImageRef.Digest
-	}
 
 	copyOpts := []regclient.ImageOpts{}
 
@@ -739,7 +771,7 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 		// blobs and return ErrBlobReaderMissing, failing the very sync that fallback exists to
 		// let succeed.
 		if _, staged := service.streamManager.StreamingImageManifest(localRepo, reference); staged {
-			service.log.Debug().Str("repo", localRepo).Str("reference", remoteImageRef.Tag).
+			service.log.Debug().Str("repo", localRepo).Str("reference", reference).
 				Msg("streaming is enabled. Enabling reader hook")
 			copyOpts = append(copyOpts, regclient.ImageWithBlobReaderHook(service.streamManager.StreamingBlobReader))
 		}
@@ -749,24 +781,24 @@ func (service *BaseService) syncRef(ctx context.Context, localRepo string, remot
 	skipImage, err = service.destination.CanSkipImage(localRepo, reference, remoteDigest)
 	if err != nil {
 		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-			Str("repo", localRepo).Str("reference", remoteImageRef.Tag).
+			Str("repo", localRepo).Str("reference", reference).
 			Msg("couldn't check if the local image can be skipped")
 	}
 
 	if !skipImage {
 		if seeded := service.preseedLocalBlobs(ctx, localRepo, localImageRef, blobDigests); seeded > 0 {
-			service.log.Debug().Str("repo", localRepo).Str("reference", remoteImageRef.Tag).
+			service.log.Debug().Str("repo", localRepo).Str("reference", reference).
 				Int("seededBlobs", seeded).Msg("reused blobs already present in local storage")
 		}
 
 		service.log.Info().Str("remote image", remoteImageRef.CommonName()).
-			Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("syncing image")
+			Str("local image", fmt.Sprintf("%s:%s", localRepo, localImageRef.Tag)).Msg("syncing image")
 
 		err = service.rc.ImageCopy(ctx, remoteImageRef, localImageRef, copyOpts...)
 		if err != nil {
 			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 				Str("remote image", remoteImageRef.CommonName()).
-				Str("local image", fmt.Sprintf("%s:%s", localRepo, remoteImageRef.Tag)).Msg("failed to sync image")
+				Str("local image", fmt.Sprintf("%s:%s", localRepo, localImageRef.Tag)).Msg("failed to sync image")
 		}
 
 		return false, err
@@ -875,8 +907,11 @@ func (service *BaseService) enforceOnlySigned(ctx context.Context, remoteRepo, t
 	return nil
 }
 
+// syncImage syncs localRepo:tag from remoteRepo:tag, unless pinnedDigest is set, in which case
+// the remote fetch targets that exact digest instead of re-resolving tag - see PinnedSyncer's doc
+// comment for why a caller would want that. Either way the local commit is keyed by tag.
 func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo, tag string,
-	repoTags []string, withReferrers bool,
+	repoTags []string, withReferrers bool, pinnedDigest godigest.Digest,
 ) error {
 	service.clientLock.RLock()
 	defer service.clientLock.RUnlock()
@@ -887,17 +922,38 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 
 	var blobDigests []godigest.Digest
 
-	remoteImageRef, err := service.remote.GetImageReference(remoteRepo, tag)
-	if err != nil {
-		service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
-			Str("repository", remoteRepo).Str("reference", tag).Msg("couldn't get a remote image reference")
+	var remoteImageRef ref.Ref
 
-		return err
-	}
+	var err error
 
-	localDigest, remoteDigest, isConverted, blobDigests, err = service.computeLocalStoredImageDigest(ctx, remoteRepo, tag)
-	if err != nil {
-		return err
+	if pinnedDigest != "" {
+		remoteImageRef, err = service.remote.GetImageReference(remoteRepo, pinnedDigest.String())
+		if err != nil {
+			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+				Str("repository", remoteRepo).Str("reference", pinnedDigest.String()).
+				Msg("couldn't get a remote image reference")
+
+			return err
+		}
+
+		// A pinned sync always has PreserveDigest set - streaming registries require it (see
+		// validateRegistryStreamingSyncConfig) - so the local digest always equals the remote one,
+		// no OCI conversion ever applies, and there's nothing to compute blobDigests from without
+		// re-fetching the manifest this call is specifically pinned to avoid re-fetching.
+		remoteDigest, localDigest = pinnedDigest, pinnedDigest
+	} else {
+		remoteImageRef, err = service.remote.GetImageReference(remoteRepo, tag)
+		if err != nil {
+			service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
+				Str("repository", remoteRepo).Str("reference", tag).Msg("couldn't get a remote image reference")
+
+			return err
+		}
+
+		localDigest, remoteDigest, isConverted, blobDigests, err = service.computeLocalStoredImageDigest(ctx, remoteRepo, tag)
+		if err != nil {
+			return err
+		}
 	}
 
 	defer service.rc.Close(ctx, remoteImageRef)
@@ -919,19 +975,16 @@ func (service *BaseService) syncImage(ctx context.Context, localRepo, remoteRepo
 	// just in case there is an error before commit() which cleans up.
 	defer service.destination.CleanupImage(localImageRef, localRepo) //nolint: errcheck
 
-	// Purge the stream cache only once this sync finishes (success or failure), since only then
-	// do streaming clients have a complete, verified blob or a reason for this background sync to
-	// retry independently. Deferred so it runs after syncRef (below) has actually copied the
-	// image, rather than racing the download/streaming-blob-reader setup it's meant to clean up
-	// after.
-	if service.streamManager != nil {
-		defer func() {
-			go service.streamManager.RemoveStreamingImage(localRepo, tag)
-		}()
-	}
+	// Deliberately no stream-cache cleanup here: this syncImage is shared by SyncRepo's periodic
+	// sync and plain on-demand SyncImage, either of which can run for localRepo:tag concurrently
+	// with an unrelated streaming background sync of the very same reference. Purging the stream
+	// cache from here would race that background sync's own copy, potentially removing the active
+	// readers/blob-reader hook it's still using and truncating attached clients. Only the
+	// FetchManifestForStream background goroutine that actually staged the entry owns removing it
+	// - see its defer in on_demand.go.
 
 	// first sync image
-	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest, blobDigests)
+	skipped, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, localDigest, blobDigests, tag)
 	if err != nil {
 		return err
 	}
@@ -1051,7 +1104,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 
 			localImageRef = localImageRef.SetDigest(desc.Digest.String())
 
-			_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest, nil)
+			_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, desc.Digest, nil, desc.Digest.String())
 			if err != nil {
 				service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 					Str("repo", localRepo).Str("local reference", localImageRef.Tag).
@@ -1072,7 +1125,7 @@ func (service *BaseService) syncReferrers(ctx context.Context, tags []string, lo
 
 					localImageRef = localImageRef.SetTag(tag)
 
-					_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest, nil)
+					_, err := service.syncRef(ctx, localRepo, remoteImageRef, localImageRef, remoteDigest, nil, tag)
 					if err != nil {
 						service.log.Error().Err(err).Str("errortype", common.TypeOf(err)).
 							Str("repo", localRepo).Str("local reference", localImageRef.Tag).
