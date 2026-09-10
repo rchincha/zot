@@ -77,7 +77,7 @@ require (
 	github.com/vektah/gqlparser/v2 v2.5.32
 	github.com/zitadel/oidc/v3 v3.45.4
 	go.etcd.io/bbolt v1.4.3
-	golang.org/x/crypto v0.48.0
+	golang.org/x/crypto v0.52.0
 	golang.org/x/oauth2 v0.35.0
 	google.golang.org/protobuf v1.36.11
 	gopkg.in/resty.v1 v1.12.0
@@ -216,7 +216,7 @@ require (
 	github.com/cockroachdb/apd/v3 v3.2.1 // indirect
 	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be // indirect
 	github.com/containerd/cgroups/v3 v3.1.0 // indirect
-	github.com/containerd/containerd v1.7.29 // indirect
+	github.com/containerd/containerd v1.7.35 // indirect
 	github.com/containerd/containerd/api v1.10.0 // indirect
 	github.com/containerd/containerd/v2 v2.2.0 // indirect
 	github.com/containerd/continuity v0.4.5 // indirect
@@ -266,7 +266,7 @@ require (
 	github.com/go-git/go-git/v5 v5.16.5 // indirect
 	github.com/go-gorp/gorp/v3 v3.1.0 // indirect
 	github.com/go-ini/ini v1.67.0 // indirect
-	github.com/go-jose/go-jose/v3 v3.0.4 // indirect
+	github.com/go-jose/go-jose/v3 v3.0.5 // indirect
 	github.com/go-logr/logr v1.4.3 // indirect
 	github.com/go-logr/stdr v1.2.2 // indirect
 	github.com/go-openapi/analysis v0.24.1 // indirect
@@ -382,7 +382,7 @@ require (
 	github.com/moby/locker v1.0.1 // indirect
 	github.com/moby/moby/api v1.52.0 // indirect
 	github.com/moby/moby/client v0.2.1 // indirect
-	github.com/moby/spdystream v0.5.0 // indirect
+	github.com/moby/spdystream v0.5.1 // indirect
 	github.com/moby/sys/atomicwriter v0.1.0 // indirect
 	github.com/moby/sys/mountinfo v0.7.2 // indirect
 	github.com/moby/sys/sequential v0.6.0 // indirect
@@ -415,7 +415,7 @@ require (
 	github.com/olekukonko/ll v0.1.4-0.20260115111900-9e59c2286df0 // indirect
 	github.com/open-policy-agent/opa v1.12.3 // indirect
 	github.com/opencontainers/runtime-spec v1.2.1 // indirect
-	github.com/opencontainers/selinux v1.13.0 // indirect
+	github.com/opencontainers/selinux v1.13.1 // indirect
 	github.com/openvex/discovery v0.1.1-0.20240802171711-7c54efc57553 // indirect
 	github.com/openvex/go-vex v0.2.7 // indirect
 	github.com/owenrumney/go-sarif/v2 v2.3.3 // indirect
@@ -537,14 +537,14 @@ require (
 	go.yaml.in/yaml/v3 v3.0.4 // indirect
 	go.yaml.in/yaml/v4 v4.0.0-rc.3 // indirect
 	golang.org/x/exp v0.0.0-20260218203240-3dfff04db8fa // indirect
-	golang.org/x/mod v0.33.0 // indirect
-	golang.org/x/net v0.50.0 // indirect
-	golang.org/x/sync v0.19.0 // indirect
-	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/term v0.40.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/mod v0.35.0 // indirect
+	golang.org/x/net v0.55.0 // indirect
+	golang.org/x/sync v0.20.0 // indirect
+	golang.org/x/sys v0.45.0 // indirect
+	golang.org/x/term v0.43.0 // indirect
+	golang.org/x/text v0.37.0 // indirect
 	golang.org/x/time v0.14.0 // indirect
-	golang.org/x/tools v0.42.0 // indirect
+	golang.org/x/tools v0.44.0 // indirect
 	golang.org/x/xerrors v0.0.0-20240903120638-7835f813f4da // indirect
 	google.golang.org/api v0.267.0 // indirect
 	google.golang.org/genproto v0.0.0-20260209200024-4cfbd4190f57 // indirect
