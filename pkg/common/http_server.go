@@ -91,27 +91,25 @@ func AddCORSHeaders(allowOrigin string, response http.ResponseWriter) {
 func AuthzOnlyAdminsMiddleware(conf *config.Config) mux.MiddlewareFunc {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
-			// Get auth config safely
-			authConfig := conf.CopyAuthConfig()
-			if !authConfig.IsBasicAuthnEnabled() {
+			if !conf.IsAuthnEnabled() {
 				next.ServeHTTP(response, request)
 
 				return
 			}
 
 			realm := conf.GetRealm()
-			failDelay := authConfig.GetFailDelay()
+			failDelay := conf.CopyAuthConfig().GetFailDelay()
 
 			// get userAccessControl built in previous authn/authz middlewares
 			userAc, err := reqCtx.UserAcFromContext(request.Context())
 			if err != nil { // should not happen as this has been previously checked for errors
-				AuthzFail(response, request, userAc.GetUsername(), realm, failDelay)
+				AuthzFail(response, request, "", realm, failDelay)
 
 				return
 			}
 
-			// reject non-admin access if authentication is enabled
-			if userAc != nil && !userAc.IsAdmin() {
+			// Missing authentication context and non-admin principals both fail closed.
+			if userAc.IsAnonymous() || !userAc.IsAdmin() {
 				AuthzFail(response, request, userAc.GetUsername(), realm, failDelay)
 
 				return
