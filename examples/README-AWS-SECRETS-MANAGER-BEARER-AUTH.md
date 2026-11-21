@@ -126,6 +126,22 @@ Each value can also be a JWKS key set containing a single key:
 
 JWTs presented to Zot must include a `kid` (Key ID) header that matches one of the key IDs in the secret. This is how Zot selects the correct public key for verification.
 
+A valid signature only shows that the token came from a trusted signer. Because the same signing keys may be shared by several services (for example several zot instances), Zot also checks that the token was issued for it:
+
+- **`aud`** (required): must name at least one of the accepted audiences. By default the only accepted audience is the bearer `service` (`zot-service` in the examples above), as the [distribution token specification](https://distribution.github.io/distribution/spec/auth/jwt/) requires; token servers such as `docker_auth` put the requested `service` into `aud`. If your token server issues a different audience, list the accepted values in `audiences`. When `upstreamTokenEndpoint` is configured, its `service` is accepted as well.
+- **`iss`** (optional): when `issuer` is set, the token's `iss` must equal it.
+- **`exp`** (required): tokens without an expiry are rejected.
+
+```json
+"bearer": {
+  "realm": "zot",
+  "service": "zot-service",
+  "audiences": ["zot-service"],
+  "issuer": "https://auth.example.com",
+  "awsSecretsManager": { "region": "us-east-1", "secretName": "zot/jwt-verification-keys" }
+}
+```
+
 ### Example JWT Header
 
 ```json
@@ -142,7 +158,7 @@ JWTs presented to Zot must include a `kid` (Key ID) header that matches one of t
 {
   "iss": "https://auth.example.com",
   "sub": "service-account-1",
-  "aud": ["zot"],
+  "aud": ["zot-service"],
   "exp": 1705258800,
   "iat": 1705255200,
   "access": [
@@ -267,6 +283,12 @@ Set log level to `debug` to see detailed authentication logs:
 7. **"token missing 'kid' header"**: JWTs must include a `kid` header when using AWS Secrets Manager keys.
 
 8. **"cannot configure both cert and AWS Secrets Manager"**: The static `cert` and `awsSecretsManager` options are mutually exclusive. Remove one of them.
+
+9. **"token has invalid audience"** or **"aud claim is required"**: The token's `aud` claim does not name this registry. Have the token server issue tokens for the configured `service`, or list the audience it issues in `audiences`.
+
+10. **"token has invalid issuer"**: The token's `iss` claim does not equal the configured `issuer`.
+
+11. **"exp claim is required"**: The token has no `exp` claim. Tokens must expire.
 
 ## Security Considerations
 

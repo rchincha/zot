@@ -111,6 +111,7 @@ func testBearerAuthCatalogRequiresLegacyScope(t *testing.T, disableAnonymousCata
 		t.Run(testCase.name, func(t *testing.T) {
 			token, err := jwt.NewWithClaims(jwt.SigningMethodEdDSA, ClaimsWithAccess{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Audience:  []string{"service"},
 				Access:    testCase.access,
 			}).SignedString(privateKey)
 			if err != nil {

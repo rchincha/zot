@@ -60,13 +60,20 @@ func MakeAuthTestServer(serverKey, signAlg string, unauthorizedNamespace string)
 			}
 		}
 
+		// Like a real token server, issue the token for the service the client asked for:
+		// registries only accept tokens whose audience names them.
+		audience := request.URL.Query().Get("service")
+		if audience == "" {
+			audience = "Zot Registry"
+		}
+
 		now := time.Now()
 		claims := api.ClaimsWithAccess{
 			Access:    access,
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute * 1)),
 			IssuedAt:  jwt.NewNumericDate(now),
 			Issuer:    "Zot",
-			Audience:  []string{"Zot Registry"},
+			Audience:  []string{audience},
 		}
 
 		token := jwt.NewWithClaims(signingMethod, claims)

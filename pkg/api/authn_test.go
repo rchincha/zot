@@ -1323,6 +1323,7 @@ func TestMultipleAuthorizationHeaders(t *testing.T) {
 			claims := &api.ClaimsWithAccess{
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Audience:  jwt.ClaimStrings{"test-service"},
 				Access: []api.ResourceAccess{
 					{
 						Type:    "repository",
@@ -2107,6 +2108,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			claims := &api.ClaimsWithAccess{
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Audience:  jwt.ClaimStrings{"test-service"},
 				Access: []api.ResourceAccess{
 					{
 						Type:    "repository",
@@ -2281,6 +2283,7 @@ func TestBearerOIDCWorkloadIdentity(t *testing.T) {
 			claims := &api.ClaimsWithAccess{
 				IssuedAt:  jwt.NewNumericDate(time.Now()),
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Audience:  jwt.ClaimStrings{"test-service"},
 				Access: []api.ResourceAccess{
 					{
 						Type:    "repository",
@@ -2427,6 +2430,7 @@ func TestTraditionalBearerMethodActionMapping(t *testing.T) {
 		claims := &api.ClaimsWithAccess{
 			IssuedAt:  jwt.NewNumericDate(time.Now()),
 			ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+			Audience:  jwt.ClaimStrings{"test-service"},
 			Access: []api.ResourceAccess{
 				{
 					Type:    "repository",
@@ -3645,5 +3649,108 @@ func TestOpenIDProviderUnreachableAtStartup(t *testing.T) {
 		statusCode, location := login()
 		So(statusCode, ShouldEqual, http.StatusFound)
 		So(location, ShouldStartWith, mockOIDCServer.AuthorizationEndpoint())
+	})
+}
+
+// TestBearerTokenForAnotherService checks end to end that a token server key trusted by this
+// registry may also sign tokens for other services, and a token it issued for one of those
+// services must not authorize requests here.
+func TestBearerTokenForAnotherService(t *testing.T) {
+	Convey("A registry only accepts tokens issued for it", t, func() {
+		tempDir := t.TempDir()
+
+		caCert, caKey, err := tlsutils.GenerateCACert()
+		So(err, ShouldBeNil)
+
+		serverCertPath := path.Join(tempDir, "server.cert")
+		serverKeyPath := path.Join(tempDir, "server.key")
+		err = tlsutils.GenerateServerCertToFile(caCert, caKey, serverCertPath, serverKeyPath,
+			&tlsutils.CertificateOptions{Hostname: "localhost"})
+		So(err, ShouldBeNil)
+
+		keyBytes, err := os.ReadFile(serverKeyPath)
+		So(err, ShouldBeNil)
+
+		keyBlock, _ := pem.Decode(keyBytes)
+		So(keyBlock, ShouldNotBeNil)
+
+		privateKey, err := x509.ParsePKCS1PrivateKey(keyBlock.Bytes)
+		So(err, ShouldBeNil)
+
+		mint := func(issuer string, audience ...string) string {
+			now := time.Now()
+			token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, &api.ClaimsWithAccess{
+				Access: []api.ResourceAccess{{
+					Type:    "repository",
+					Name:    "payments/api",
+					Actions: []string{"pull", "push", "delete"},
+				}},
+				Issuer:    issuer,
+				Audience:  audience,
+				Subject:   "dev-user",
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(now.Add(5 * time.Minute)),
+			}).SignedString(privateKey)
+			So(err, ShouldBeNil)
+
+			return token
+		}
+
+		start := func(bearerConfig *config.BearerConfig) string {
+			bearerConfig.Cert = serverCertPath
+			bearerConfig.Realm = "https://auth.example.com/token"
+
+			conf := config.New()
+			conf.HTTP.Port = "0"
+			conf.HTTP.Auth = &config.AuthConfig{Bearer: bearerConfig}
+			conf.Storage.RootDirectory = t.TempDir()
+
+			cm := test.NewControllerManager(api.NewController(conf))
+			baseURL := cm.StartAndWait()
+			Reset(cm.StopServer)
+
+			return baseURL
+		}
+
+		status := func(baseURL, method, token string) int {
+			req, err := http.NewRequestWithContext(context.Background(), method,
+				baseURL+"/v2/payments/api/blobs/uploads/", nil)
+			So(err, ShouldBeNil)
+			req.Header.Set("Authorization", "Bearer "+token)
+
+			resp, err := http.DefaultClient.Do(req)
+			So(err, ShouldBeNil)
+			defer resp.Body.Close()
+
+			return resp.StatusCode
+		}
+
+		Convey("By default the audience must be the service", func() {
+			baseURL := start(&config.BearerConfig{Service: "prod-registry"})
+
+			So(status(baseURL, http.MethodPost, mint("https://auth.example.com", "prod-registry")),
+				ShouldEqual, http.StatusAccepted)
+			So(status(baseURL, http.MethodPost, mint("https://auth.example.com", "dev-registry")),
+				ShouldEqual, http.StatusUnauthorized)
+			So(status(baseURL, http.MethodPost, mint("https://sso.example.net", "billing-api")),
+				ShouldEqual, http.StatusUnauthorized)
+			So(status(baseURL, http.MethodPost, mint("https://auth.example.com")),
+				ShouldEqual, http.StatusUnauthorized)
+		})
+
+		Convey("Configured audiences and issuer are enforced", func() {
+			baseURL := start(&config.BearerConfig{
+				Service:   "myauth",
+				Audiences: []string{"zot"},
+				Issuer:    "https://auth.example.com",
+			})
+
+			So(status(baseURL, http.MethodPost, mint("https://auth.example.com", "zot")),
+				ShouldEqual, http.StatusAccepted)
+			So(status(baseURL, http.MethodPost, mint("https://auth.example.com", "myauth")),
+				ShouldEqual, http.StatusUnauthorized)
+			So(status(baseURL, http.MethodPost, mint("https://sso.example.net", "zot")),
+				ShouldEqual, http.StatusUnauthorized)
+		})
 	})
 }

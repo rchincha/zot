@@ -103,6 +103,7 @@ func TestBearerAuthUnscopedTokenDeniedOutsideCatalog(t *testing.T) {
 		token, err := jwt.NewWithClaims(jwt.SigningMethodEdDSA, ClaimsWithAccess{
 			RegisteredClaims: jwt.RegisteredClaims{
 				ExpiresAt: jwt.NewNumericDate(time.Now().Add(time.Hour)),
+				Audience:  []string{"service"},
 			},
 			Access: testCase.access,
 		}).SignedString(privateKey)

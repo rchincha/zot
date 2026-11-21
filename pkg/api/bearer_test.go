@@ -56,7 +56,7 @@ func TestBearerAuthorizer(t *testing.T) {
 				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute * 1)),
 				IssuedAt:  jwt.NewNumericDate(now),
 				Issuer:    "Zot",
-				Audience:  []string{"Zot Registry"},
+				Audience:  []string{"service"},
 			}
 
 			token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -137,7 +137,7 @@ func TestBearerAuthorizer(t *testing.T) {
 					ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
 					IssuedAt:  jwt.NewNumericDate(now),
 					Issuer:    "Zot",
-					Audience:  []string{"Zot Registry"},
+					Audience:  []string{"service"},
 				}
 
 				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -168,7 +168,7 @@ func TestBearerAuthorizer(t *testing.T) {
 					ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
 					IssuedAt:  jwt.NewNumericDate(now),
 					Issuer:    "Zot",
-					Audience:  []string{"Zot Registry"},
+					Audience:  []string{"service"},
 				}
 
 				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -205,7 +205,7 @@ func TestBearerAuthorizer(t *testing.T) {
 					ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
 					IssuedAt:  jwt.NewNumericDate(now),
 					Issuer:    "Zot",
-					Audience:  []string{"Zot Registry"},
+					Audience:  []string{"service"},
 				}
 
 				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -242,7 +242,7 @@ func TestBearerAuthorizer(t *testing.T) {
 					ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
 					IssuedAt:  jwt.NewNumericDate(now),
 					Issuer:    "Zot",
-					Audience:  []string{"Zot Registry"},
+					Audience:  []string{"service"},
 				}
 
 				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -287,7 +287,7 @@ func TestBearerAuthorizer(t *testing.T) {
 					ExpiresAt: jwt.NewNumericDate(expiresAt),
 					IssuedAt:  jwt.NewNumericDate(expiresAt.Add(-time.Hour)),
 					Issuer:    "Zot",
-					Audience:  []string{"Zot Registry"},
+					Audience:  []string{"service"},
 				}
 
 				token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(key)
@@ -426,6 +426,7 @@ func TestBearerAuthorizerJWKSEdDSA(t *testing.T) {
 				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
 				IssuedAt:  jwt.NewNumericDate(now),
 				Issuer:    "https://test-issuer",
+				Audience:  []string{"service"},
 			}
 
 			token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
@@ -451,7 +452,14 @@ func TestBearerAuthorizerJWKSEdDSA(t *testing.T) {
 			const preSignedJWT = `eyJhbGciOiJFZERTQSIsImtpZCI6IjAxZjBmZjk2LTAyODYtNjJjOS05ZmUwLTY4YzZhYzRmNDhlMCIsInR5cCI6IkpXVCJ9.eyJqdGkiOiIwMWYwZmY5Ni0wYWNjLTY3YjMtYWY5Yy02OGM2YWM0ZjQ4ZTAiLCJpc3MiOiJodHRwczovL3Rlc3QtaXNzdWVyIiwic3ViIjoiYy1lN2YyMjFhY2ZlZmJiOWNlIiwiYXVkIjpbImZsdXgtb3BlcmF0b3IiXSwiZXhwIjoxODAxNTA0MDMzLCJpYXQiOjE3Njk5NjgwMzMsIm5iZiI6MTc2OTk2ODAzM30.-4_9d1llJ8nCvW8AQdyQKvidx6DtV9lm78pWhbS0w49hq5tRcx3bt_zGGyhj-VGPFIGF86LTL25hcgOVKLEZBg`
 
 			authHeader := "Bearer " + preSignedJWT
+
+			// The token was issued for "flux-operator", so the default audience (the service) rejects it.
 			err := authorizer.Authorize(context.Background(), authHeader, nil)
+			So(err, ShouldWrap, zerr.ErrInvalidBearerToken)
+
+			fluxAuthorizer := api.NewBearerAuthorizer("realm", "service", keyFunc,
+				api.WithBearerAudiences("flux-operator"), api.WithBearerIssuer("https://test-issuer"))
+			err = fluxAuthorizer.Authorize(context.Background(), authHeader, nil)
 			So(err, ShouldBeNil)
 		})
 	})
@@ -575,6 +583,7 @@ func TestBearerAuthorizerAuthenticate(t *testing.T) {
 			Access:    access,
 			ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
 			IssuedAt:  jwt.NewNumericDate(now),
+			Audience:  []string{"service"},
 		}
 
 		token, err := jwt.NewWithClaims(signingMethod, claims).SignedString(privKey)
@@ -592,5 +601,134 @@ func TestBearerAuthorizerAuthenticate(t *testing.T) {
 		userAc := api.UserAccessControlFromBearerAccess(gotClaims.Access)
 		So(userAc.Can(constants.ReadPermission, "authorized-repository"), ShouldBeTrue)
 		So(userAc.Can(constants.ReadPermission, "other-repository"), ShouldBeFalse)
+	})
+}
+
+// TestBearerAuthorizerAudienceAndIssuer checks that a token signed by a trusted key but issued for
+// another service, by another issuer, or without an expiry is rejected.
+func TestBearerAuthorizerAudienceAndIssuer(t *testing.T) {
+	Convey("Bearer tokens are checked for audience, issuer and expiry", t, func() {
+		privKey, err := rsa.GenerateKey(rand.Reader, 2048)
+		So(err, ShouldBeNil)
+
+		var keyFunc api.BearerAuthorizerKeyFunc = func(_ context.Context, _ *jwt.Token) (any, error) {
+			return privKey.Public(), nil
+		}
+
+		access := []api.ResourceAccess{{
+			Name:    "payments/api",
+			Type:    "repository",
+			Actions: []string{"pull", "push", "delete"},
+		}}
+		requested := &api.ResourceAction{Type: "repository", Name: "payments/api", Action: "push"}
+
+		sign := func(claims jwt.RegisteredClaims) string {
+			token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, api.ClaimsWithAccess{
+				Access:           access,
+				RegisteredClaims: claims,
+			}).SignedString(privKey)
+			So(err, ShouldBeNil)
+
+			return "Bearer " + token
+		}
+
+		now := time.Now()
+		claimsFor := func(audience ...string) jwt.RegisteredClaims {
+			return jwt.RegisteredClaims{
+				Issuer:    "https://auth.example.com",
+				Audience:  audience,
+				IssuedAt:  jwt.NewNumericDate(now),
+				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
+			}
+		}
+
+		Convey("The audience defaults to the service", func() {
+			authorizer := api.NewBearerAuthorizer("realm", "prod-registry", keyFunc)
+
+			So(authorizer.Authorize(context.Background(), sign(claimsFor("prod-registry")), requested), ShouldBeNil)
+			So(authorizer.Authorize(context.Background(), sign(claimsFor("dev-registry", "prod-registry")), requested),
+				ShouldBeNil)
+
+			err := authorizer.Authorize(context.Background(), sign(claimsFor("dev-registry")), requested)
+			So(err, ShouldWrap, zerr.ErrInvalidBearerToken)
+			So(err, ShouldWrap, jwt.ErrTokenInvalidAudience)
+
+			err = authorizer.Authorize(context.Background(), sign(claimsFor()), requested)
+			So(err, ShouldWrap, zerr.ErrInvalidBearerToken)
+			So(err, ShouldWrap, jwt.ErrTokenRequiredClaimMissing)
+		})
+
+		Convey("Configured audiences replace the service", func() {
+			authorizer := api.NewBearerAuthorizer("realm", "myauth", keyFunc, api.WithBearerAudiences("zot", "zot-alt"))
+
+			So(authorizer.Authorize(context.Background(), sign(claimsFor("zot")), requested), ShouldBeNil)
+			So(authorizer.Authorize(context.Background(), sign(claimsFor("zot-alt")), requested), ShouldBeNil)
+			So(authorizer.Authorize(context.Background(), sign(claimsFor("myauth")), requested),
+				ShouldWrap, jwt.ErrTokenInvalidAudience)
+		})
+
+		Convey("Empty audiences keep the service default", func() {
+			authorizer := api.NewBearerAuthorizer("realm", "prod-registry", keyFunc, api.WithBearerAudiences())
+
+			So(authorizer.Authorize(context.Background(), sign(claimsFor("prod-registry")), requested), ShouldBeNil)
+			So(authorizer.Authorize(context.Background(), sign(claimsFor("dev-registry")), requested),
+				ShouldWrap, jwt.ErrTokenInvalidAudience)
+		})
+
+		Convey("Without a service or audiences every token is rejected", func() {
+			authorizer := api.NewBearerAuthorizer("realm", "", keyFunc, api.WithBearerAudiences("", ""))
+
+			err := authorizer.Authorize(context.Background(), sign(claimsFor("prod-registry")), requested)
+			So(err, ShouldWrap, zerr.ErrInvalidBearerToken)
+			So(err, ShouldWrap, zerr.ErrBearerAudienceNotConfigured)
+
+			err = authorizer.Authorize(context.Background(), sign(claimsFor()), requested)
+			So(err, ShouldWrap, zerr.ErrBearerAudienceNotConfigured)
+		})
+
+		Convey("A configured issuer must match", func() {
+			authorizer := api.NewBearerAuthorizer("realm", "prod-registry", keyFunc,
+				api.WithBearerIssuer("https://auth.example.com"))
+
+			So(authorizer.Authorize(context.Background(), sign(claimsFor("prod-registry")), requested), ShouldBeNil)
+
+			claims := claimsFor("prod-registry")
+			claims.Issuer = "https://sso.example.net"
+			So(authorizer.Authorize(context.Background(), sign(claims), requested), ShouldWrap, jwt.ErrTokenInvalidIssuer)
+
+			claims.Issuer = ""
+			So(authorizer.Authorize(context.Background(), sign(claims), requested),
+				ShouldWrap, jwt.ErrTokenRequiredClaimMissing)
+		})
+
+		Convey("The issuer is not checked unless configured", func() {
+			authorizer := api.NewBearerAuthorizer("realm", "prod-registry", keyFunc)
+
+			claims := claimsFor("prod-registry")
+			claims.Issuer = "https://sso.example.net"
+			So(authorizer.Authorize(context.Background(), sign(claims), requested), ShouldBeNil)
+		})
+
+		Convey("A token without exp is rejected", func() {
+			authorizer := api.NewBearerAuthorizer("realm", "prod-registry", keyFunc)
+
+			claims := claimsFor("prod-registry")
+			claims.ExpiresAt = nil
+			err := authorizer.Authorize(context.Background(), sign(claims), requested)
+			So(err, ShouldWrap, zerr.ErrInvalidBearerToken)
+			So(err, ShouldWrap, jwt.ErrTokenRequiredClaimMissing)
+		})
+
+		Convey("A rejected token gets an invalid_token challenge naming the service", func() {
+			authorizer := api.NewBearerAuthorizer("realm", "prod-registry", keyFunc)
+
+			_, err := authorizer.Authenticate(context.Background(), sign(claimsFor("dev-registry")), requested)
+			So(err, ShouldNotBeNil)
+
+			var challenge *api.AuthChallengeError
+			So(errors.As(err, &challenge), ShouldBeTrue)
+			So(challenge.Header(), ShouldContainSubstring, `service="prod-registry"`)
+			So(challenge.Header(), ShouldContainSubstring, `error="invalid_token"`)
+		})
 	})
 }

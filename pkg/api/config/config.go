@@ -273,6 +273,15 @@ type BearerConfig struct {
 	UpstreamTokenEndpoint *UpstreamTokenEndpointConfig `json:"upstreamTokenEndpoint,omitempty" mapstructure:"upstreamTokenEndpoint,omitempty"` //nolint:lll
 	Cert                  string
 
+	// Issuer, when set, is the only "iss" claim accepted on tokens verified with Cert or AWSSecretsManager.
+	Issuer string `json:"issuer,omitempty" mapstructure:"issuer,omitempty"`
+
+	// Audiences are the "aud" claims accepted on tokens verified with Cert or AWSSecretsManager; a token
+	// must name at least one of them. Defaults to Service, as the distribution token spec has the registry
+	// identify as the audience. Without this check a key shared by several services would let a token
+	// issued for one of them authorize requests to this registry.
+	Audiences []string `json:"audiences,omitempty" mapstructure:"audiences,omitempty"`
+
 	// OIDC configuration for workload identity authentication
 	OIDC BearerOIDCConfigs `json:"oidc,omitempty" mapstructure:"oidc,omitempty"`
 

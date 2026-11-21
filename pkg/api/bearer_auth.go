@@ -82,6 +82,8 @@ func NewBearerAuth(authConfig *config.AuthConfig, logger log.Logger) *BearerAuth
 			authConfig.Bearer.Realm,
 			authConfig.Bearer.Service,
 			traditionalAuthorizerKeyFunc,
+			WithBearerAudiences(defaultBearerAudiences(authConfig.Bearer)...),
+			WithBearerIssuer(authConfig.Bearer.Issuer),
 		)
 	}
 
@@ -95,6 +97,24 @@ func NewBearerAuth(authConfig *config.AuthConfig, logger log.Logger) *BearerAuth
 	}
 
 	return bearerAuth
+}
+
+// defaultBearerAudiences returns the configured audiences, or else the services tokens are requested
+// for: the registry's own service and, when token requests are proxied upstream, the service zot
+// names in the forwarded request, since the upstream token server issues the token for that one.
+func defaultBearerAudiences(bearerConfig *config.BearerConfig) []string {
+	if len(bearerConfig.Audiences) > 0 {
+		return bearerConfig.Audiences
+	}
+
+	audiences := []string{bearerConfig.Service}
+
+	if upstream := bearerConfig.UpstreamTokenEndpoint; upstream != nil && upstream.Service != "" &&
+		upstream.Service != bearerConfig.Service {
+		audiences = append(audiences, upstream.Service)
+	}
+
+	return audiences
 }
 
 type bearerAuthenticationResult struct {

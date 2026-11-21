@@ -400,6 +400,7 @@ func TestAWSSecretsManagerBearerAuthorizerE2E(t *testing.T) {
 				},
 				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
 				IssuedAt:  jwt.NewNumericDate(now),
+				Audience:  []string{"service"},
 			}
 
 			token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
@@ -423,6 +424,7 @@ func TestAWSSecretsManagerBearerAuthorizerE2E(t *testing.T) {
 			claims := api.ClaimsWithAccess{
 				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
 				IssuedAt:  jwt.NewNumericDate(now),
+				Audience:  []string{"service"},
 			}
 
 			token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)
@@ -440,6 +442,7 @@ func TestAWSSecretsManagerBearerAuthorizerE2E(t *testing.T) {
 			claims := api.ClaimsWithAccess{
 				ExpiresAt: jwt.NewNumericDate(now.Add(time.Minute)),
 				IssuedAt:  jwt.NewNumericDate(now),
+				Audience:  []string{"service"},
 			}
 
 			token := jwt.NewWithClaims(jwt.SigningMethodEdDSA, claims)

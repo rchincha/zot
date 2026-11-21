@@ -469,7 +469,19 @@ NOTE: The separate file for storing DN and password credentials must be created.
       }
 ```
 
-When OIDC workload identity/federation uses Zot `/zot/auth/token` but the same deployment still needs this traditional bearer token service, configure the optional `upstreamTokenEndpoint` object. `upstreamTokenEndpoint.realm` points to the existing traditional bearer token service and `upstreamTokenEndpoint.service` is the upstream service value; Zot preserves the token request and rewrites only `service` before proxying requests that are not owned by local token backends. `upstreamTokenEndpoint.realm` must use HTTPS by default; plaintext HTTP requires `upstreamTokenEndpoint.allowInsecureHttp: true` and should only be used in controlled test environments.
+Tokens verified with `cert` (or `awsSecretsManager`) must be issued for this registry: their `aud` claim must name `service` (`myauth` above), as the [distribution token specification](https://distribution.github.io/distribution/spec/auth/jwt/) requires, and they must carry an `exp` claim. A token signed by the trusted key but issued for another service is rejected, so a token server that signs for several services with one key cannot be used to replay a token from one of them here. If the token server issues a different audience, list the accepted values in `audiences`; to also require a specific `iss` claim, set `issuer`:
+
+```
+      "bearer": {
+        "realm": "https://auth.myreg.io/auth/token",
+        "service": "myauth",
+        "audiences": ["myauth"],
+        "issuer": "https://auth.myreg.io",
+        "cert": "/etc/zot/auth.crt"
+      }
+```
+
+When OIDC workload identity/federation uses Zot `/zot/auth/token` but the same deployment still needs this traditional bearer token service, configure the optional `upstreamTokenEndpoint` object. `upstreamTokenEndpoint.realm` points to the existing traditional bearer token service and `upstreamTokenEndpoint.service` is the upstream service value; Zot preserves the token request and rewrites only `service` before proxying requests that are not owned by local token backends. Unless `audiences` is set, tokens whose `aud` names `upstreamTokenEndpoint.service` are accepted as well as `service`, since the upstream token server issues them for that service. `upstreamTokenEndpoint.realm` must use HTTPS by default; plaintext HTTP requires `upstreamTokenEndpoint.allowInsecureHttp: true` and should only be used in controlled test environments.
 
 ### OpenID/OAuth2 social login
 

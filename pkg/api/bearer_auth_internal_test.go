@@ -14,6 +14,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync/atomic"
 	"testing"
@@ -2074,5 +2075,58 @@ func TestAuthenticateRejectsAnonymousBearerTokenWithoutAnonymousPolicy(t *testin
 		if userAc.GetUsername() != "" || !userAc.IsAnonymous() {
 			t.Fatalf("expected no identity, got %q", userAc.GetUsername())
 		}
+	}
+}
+
+func TestDefaultBearerAudiences(t *testing.T) {
+	testCases := []struct {
+		name   string
+		config *config.BearerConfig
+		want   []string
+	}{
+		{
+			name:   "service only",
+			config: &config.BearerConfig{Service: "prod-registry"},
+			want:   []string{"prod-registry"},
+		},
+		{
+			name:   "configured audiences win over service",
+			config: &config.BearerConfig{Service: "myauth", Audiences: []string{"zot"}},
+			want:   []string{"zot"},
+		},
+		{
+			name: "upstream token service is accepted too",
+			config: &config.BearerConfig{
+				Service:               "prod-registry",
+				UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{Realm: "https://up", Service: "upstream"},
+			},
+			want: []string{"prod-registry", "upstream"},
+		},
+		{
+			name: "upstream token service equal to service is not repeated",
+			config: &config.BearerConfig{
+				Service:               "prod-registry",
+				UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{Service: "prod-registry"},
+			},
+			want: []string{"prod-registry"},
+		},
+		{
+			name: "configured audiences win over upstream service",
+			config: &config.BearerConfig{
+				Service:               "prod-registry",
+				Audiences:             []string{"zot"},
+				UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{Service: "upstream"},
+			},
+			want: []string{"zot"},
+		},
+	}
+
+	for _, testCase := range testCases {
+		t.Run(testCase.name, func(t *testing.T) {
+			got := defaultBearerAudiences(testCase.config)
+			if !slices.Equal(got, testCase.want) {
+				t.Fatalf("expected audiences %v, got %v", testCase.want, got)
+			}
+		})
 	}
 }

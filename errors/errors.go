@@ -196,6 +196,7 @@ var (
 	ErrReceivedUnexpectedAuthHeader     = errors.New("received unexpected www-authenticate header")
 	ErrNoBearerToken                    = errors.New("no bearer token given")
 	ErrInvalidBearerToken               = errors.New("invalid bearer token given")
+	ErrBearerAudienceNotConfigured      = errors.New("no bearer service or audiences to check the token audience against")
 	ErrInvalidUpstreamTokenEndpoint     = errors.New("invalid upstream token endpoint realm")
 	ErrInvalidTokenProxyForm            = errors.New("invalid token proxy form body")
 	ErrTokenRequestBodyTooLarge         = errors.New("token request body too large")

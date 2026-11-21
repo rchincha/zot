@@ -5793,7 +5793,7 @@ func TestAuthorizationMountBlob(t *testing.T) {
 	})
 }
 
-func signBearerTestToken(t *testing.T, serverKeyPath string, access []api.ResourceAccess) string {
+func signBearerTestToken(t *testing.T, serverKeyPath, audience string, access []api.ResourceAccess) string {
 	t.Helper()
 
 	keyBytes, err := os.ReadFile(serverKeyPath)
@@ -5804,9 +5804,13 @@ func signBearerTestToken(t *testing.T, serverKeyPath string, access []api.Resour
 
 	now := time.Now()
 	claims := api.ClaimsWithAccess{
-		Access:    access,
-		ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
-		IssuedAt:  jwt.NewNumericDate(now),
+		Access: access,
+		RegisteredClaims: jwt.RegisteredClaims{
+			// The registry rejects tokens not issued for its bearer service.
+			Audience:  jwt.ClaimStrings{audience},
+			ExpiresAt: jwt.NewNumericDate(now.Add(time.Hour)),
+			IssuedAt:  jwt.NewNumericDate(now),
+		},
 	}
 
 	token, err := jwt.NewWithClaims(jwt.SigningMethodRS256, claims).SignedString(privateKey)
@@ -5908,7 +5912,7 @@ func TestBearerAuthorizationMountBlob(t *testing.T) {
 		So(err, ShouldBeNil)
 		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
 
-		token = signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+		token = signBearerTestToken(t, serverKeyPath, aurl.Host, []api.ResourceAccess{
 			{
 				Type:    "repository",
 				Name:    destRepo,
@@ -6037,7 +6041,7 @@ func TestBearerAuthorizationHydrateOnRead(t *testing.T) {
 		})
 
 		Convey("dest pull and push without src pull does not hydrate", func() {
-			token := signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+			token := signBearerTestToken(t, serverKeyPath, aurl.Host, []api.ResourceAccess{
 				{
 					Type:    "repository",
 					Name:    destRepo,
@@ -6062,7 +6066,7 @@ func TestBearerAuthorizationHydrateOnRead(t *testing.T) {
 		})
 
 		Convey("src pull and dest pull+push hydrates on HEAD and ranged GET", func() {
-			token := signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+			token := signBearerTestToken(t, serverKeyPath, aurl.Host, []api.ResourceAccess{
 				{
 					Type:    "repository",
 					Name:    srcRepo,
@@ -6093,7 +6097,7 @@ func TestBearerAuthorizationHydrateOnRead(t *testing.T) {
 
 		Convey("dest push without src pull rejects dedupe mount POST", func() {
 			mountURL := baseURL + "/v2/" + destRepo + "/blobs/uploads/"
-			token := signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+			token := signBearerTestToken(t, serverKeyPath, aurl.Host, []api.ResourceAccess{
 				{
 					Type:    "repository",
 					Name:    destRepo,
@@ -6110,7 +6114,7 @@ func TestBearerAuthorizationHydrateOnRead(t *testing.T) {
 
 		Convey("src pull and dest push allows dedupe mount POST", func() {
 			mountURL := baseURL + "/v2/" + destRepo + "/blobs/uploads/"
-			token := signBearerTestToken(t, serverKeyPath, []api.ResourceAccess{
+			token := signBearerTestToken(t, serverKeyPath, aurl.Host, []api.ResourceAccess{
 				{
 					Type:    "repository",
 					Name:    destRepo,

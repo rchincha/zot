@@ -92,16 +92,82 @@ type BearerAuthorizer struct {
 	realm   string
 	service string
 	keyFunc BearerAuthorizerKeyFunc
+	// audiences are the accepted "aud" claims; a token must name at least one of them.
+	audiences []string
+	// issuer, when non-empty, is the only accepted "iss" claim.
+	issuer string
+}
+
+// BearerAuthorizerOption configures optional token claim checks of a BearerAuthorizer.
+type BearerAuthorizerOption func(*BearerAuthorizer)
+
+// WithBearerAudiences overrides the accepted "aud" claims, which default to the service name.
+// Empty values are ignored; if none are left the default is kept.
+func WithBearerAudiences(audiences ...string) BearerAuthorizerOption {
+	return func(a *BearerAuthorizer) {
+		if audiences = nonEmpty(audiences); len(audiences) > 0 {
+			a.audiences = audiences
+		}
+	}
+}
+
+func nonEmpty(values []string) []string {
+	return slices.DeleteFunc(slices.Clone(values), func(value string) bool { return value == "" })
+}
+
+// WithBearerIssuer requires the "iss" claim to equal issuer; an empty issuer leaves it unchecked.
+func WithBearerIssuer(issuer string) BearerAuthorizerOption {
+	return func(a *BearerAuthorizer) {
+		a.issuer = issuer
+	}
 }
 
 type BearerAuthorizerKeyFunc func(context.Context, *jwt.Token) (any, error)
 
-func NewBearerAuthorizer(realm string, service string, keyFunc BearerAuthorizerKeyFunc) *BearerAuthorizer {
-	return &BearerAuthorizer{
+func NewBearerAuthorizer(
+	realm string, service string, keyFunc BearerAuthorizerKeyFunc, opts ...BearerAuthorizerOption,
+) *BearerAuthorizer {
+	authorizer := &BearerAuthorizer{
 		realm:   realm,
 		service: service,
 		keyFunc: keyFunc,
 	}
+
+	// The distribution token spec has the registry identify as the audience, and clients request
+	// tokens for the service named in the challenge, so that is the default audience.
+	if service != "" {
+		authorizer.audiences = []string{service}
+	}
+
+	for _, opt := range opts {
+		opt(authorizer)
+	}
+
+	return authorizer
+}
+
+// parserOptions returns the claim checks applied to every token. A valid signature only proves the
+// token came from a trusted signer; the signer may sign for other services too, so the audience and
+// issuer decide whether the token was meant for this registry.
+func (a *BearerAuthorizer) parserOptions() []jwt.ParserOption {
+	opts := []jwt.ParserOption{
+		jwt.WithValidMethods(a.allowedSigningAlgorithms()),
+		jwt.WithIssuedAt(),
+		// golang-jwt treats exp as optional by default, which would make an exp-less token valid forever.
+		jwt.WithExpirationRequired(),
+	}
+
+	// golang-jwt skips the audience check when no audience is expected; Authenticate refuses every
+	// token in that case instead, so this list is never empty when a token gets accepted.
+	if len(a.audiences) > 0 {
+		opts = append(opts, jwt.WithAudience(a.audiences...))
+	}
+
+	if a.issuer != "" {
+		opts = append(opts, jwt.WithIssuer(a.issuer))
+	}
+
+	return opts
 }
 
 // UserAccessControlFromBearerAccess maps distribution token access entries to
@@ -211,8 +277,14 @@ func (a *BearerAuthorizer) Authenticate(
 	signedString := bearerTokenMatch.ReplaceAllString(header, "$1")
 
 	token, err := jwt.ParseWithClaims(signedString, &ClaimsWithAccess{}, func(token *jwt.Token) (any, error) {
+		// Fail closed: without an audience to compare with, a token issued for any service
+		// signed by the same key would be accepted.
+		if len(a.audiences) == 0 {
+			return nil, zerr.ErrBearerAudienceNotConfigured
+		}
+
 		return a.keyFunc(ctx, token)
-	}, jwt.WithValidMethods(a.allowedSigningAlgorithms()), jwt.WithIssuedAt())
+	}, a.parserOptions()...)
 	if err != nil {
 		err = fmt.Errorf("%w: %w", zerr.ErrInvalidBearerToken, err)
 
