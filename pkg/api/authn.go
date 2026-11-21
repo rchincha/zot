@@ -86,6 +86,37 @@ func AuthHandler(ctlr *Controller) AuthSetup {
 	}
 }
 
+// storedUserGroups returns the groups of a user authenticated without presenting login credentials
+// (an API key or a session cookie), where the identity provider cannot be asked again. The groups
+// the provider reported at the last login are read from MetaDB, and the accessControl groups are
+// resolved from the current config, so removing the user from a config group takes effect at once
+// instead of on the user's next login.
+//
+// Records stored before provider groups were kept apart mix in the config groups of that time and
+// cannot be split, so their groups are ignored until the user logs in again: keeping them would let
+// a revoked config group live on.
+func storedUserGroups(ctx context.Context, ctlr *Controller, identity string) ([]string, error) {
+	userData, err := ctlr.MetaDB.GetUserData(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	var groups []string
+
+	if ctlr.Config.CopyAccessControlConfig() != nil {
+		groups = NewAccessController(ctlr.Config).getUserGroups(identity)
+	}
+
+	if userData.ProviderGroupsOnly {
+		groups = append(groups, userData.Groups...)
+	} else if len(userData.Groups) > 0 {
+		ctlr.Log.Debug().Str("identity", identity).
+			Msg("ignoring stored groups saved by an older version, they are restored on the user's next login")
+	}
+
+	return groups, nil
+}
+
 func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAccessControl,
 	response http.ResponseWriter, request *http.Request,
 ) (bool, error) {
@@ -109,7 +140,7 @@ func (amw *AuthnMiddleware) sessionAuthn(ctlr *Controller, userAc *reqCtx.UserAc
 	userAc.SetUsername(identity)
 	userAc.SaveOnRequest(request)
 
-	groups, err := ctlr.MetaDB.GetUserGroups(request.Context())
+	groups, err := storedUserGroups(request.Context(), ctlr, identity)
 	if err != nil {
 		ctlr.Log.Err(err).Str("identity", identity).Msg("failed to get user profile in DB")
 
@@ -170,9 +201,10 @@ func (amw *AuthnMiddleware) mTLSAuthn(ctlr *Controller, userAc *reqCtx.UserAcces
 	userAc.AddGroups(groups)
 	userAc.SaveOnRequest(request)
 
-	// Update user groups in MetaDB if available
+	// Update user groups in MetaDB if available. A certificate carries no provider groups, and the
+	// config groups are resolved again on every request, so nothing is stored (see storedUserGroups).
 	if ctlr.MetaDB != nil {
-		if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
+		if err := ctlr.MetaDB.SetUserGroups(request.Context(), nil); err != nil {
 			ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
 
 			return false, err
@@ -226,8 +258,9 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 			}
 		}
 
-		// we have already populated the request context with userAc
-		if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
+		// we have already populated the request context with userAc; htpasswd has no provider
+		// groups, and the config groups are resolved again on every request (see storedUserGroups)
+		if err := ctlr.MetaDB.SetUserGroups(request.Context(), nil); err != nil {
 			ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
 
 			return false, err
@@ -267,8 +300,9 @@ func (amw *AuthnMiddleware) basicAuthn(ctlr *Controller, userAc *reqCtx.UserAcce
 				}
 			}
 
-			// we have already populated the request context with userAc
-			if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
+			// we have already populated the request context with userAc; only the LDAP groups are
+			// stored, the config groups are resolved again on every request (see storedUserGroups)
+			if err := ctlr.MetaDB.SetUserGroups(request.Context(), ldapgroups); err != nil {
 				ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
 
 				return false, err
@@ -376,7 +410,7 @@ func authenticateAPIKeyCredential(ctlr *Controller, userAc *reqCtx.UserAccessCon
 		return false, err
 	}
 
-	groups, err := ctlr.MetaDB.GetUserGroups(request.Context())
+	groups, err := storedUserGroups(request.Context(), ctlr, identity)
 	if err != nil {
 		ctlr.Log.Err(err).Str("identity", identity).Msg("failed to get user groups in DB")
 
@@ -1539,6 +1573,8 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 
 	// besides the groups received from the provider, the user is also a member of the
 	// accessControl groups listing it, same as for htpasswd, LDAP and mTLS users
+	providerGroups := groups
+
 	accessControl := ctlr.Config.CopyAccessControlConfig()
 	if accessControl != nil {
 		ac := NewAccessController(ctlr.Config)
@@ -1557,7 +1593,9 @@ func OAuth2Callback(ctlr *Controller, w http.ResponseWriter, r *http.Request, st
 		return "", err
 	}
 
-	if err := ctlr.MetaDB.SetUserGroups(r.Context(), groups); err != nil {
+	// only the provider groups are stored, the config groups are resolved again on every request
+	// that relies on the stored groups (see storedUserGroups)
+	if err := ctlr.MetaDB.SetUserGroups(r.Context(), providerGroups); err != nil {
 		ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update the user profile")
 
 		return "", err

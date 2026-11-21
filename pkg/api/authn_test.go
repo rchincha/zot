@@ -414,8 +414,8 @@ func TestAPIKeys(t *testing.T) {
 				GetUserAPIKeyInfoFn: func(hashedKey string) (string, error) {
 					return user.Email, nil
 				},
-				GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
-					return []string{}, ErrUnexpectedError
+				GetUserDataFn: func(ctx context.Context) (mTypes.UserData, error) {
+					return mTypes.UserData{}, ErrUnexpectedError
 				},
 			}
 
@@ -3751,6 +3751,118 @@ func TestBearerTokenForAnotherService(t *testing.T) {
 				ShouldEqual, http.StatusUnauthorized)
 			So(status(baseURL, http.MethodPost, mint("https://sso.example.net", "zot")),
 				ShouldEqual, http.StatusUnauthorized)
+		})
+	})
+}
+
+// TestAPIKeyUsesCurrentConfigGroups covers an API key created while its owner was in an admin
+// config group: once the config drops the user from the group, the key must lose the group's
+// access too, without waiting for the user to log in again.
+func TestAPIKeyUsesCurrentConfigGroups(t *testing.T) {
+	Convey("API keys resolve config groups from the current config", t, func() {
+		username, _ := test.GenerateRandomString()
+		password, _ := test.GenerateRandomString()
+		htpasswdPath := test.MakeHtpasswdFileFromString(t, test.GetBcryptCredString(username, password))
+		rootDir := t.TempDir()
+
+		makeConfig := func(groups config.Groups) *config.Config {
+			conf := config.New()
+			conf.HTTP.Port = "0"
+			conf.Storage.RootDirectory = rootDir
+			conf.HTTP.Auth = &config.AuthConfig{
+				HTPasswd: config.AuthHTPasswd{Path: htpasswdPath},
+				APIKey:   true,
+			}
+			conf.HTTP.AccessControl = &config.AccessControlConfig{
+				Repositories: config.Repositories{},
+				AdminPolicy: config.Policy{
+					Groups:  []string{"admins"},
+					Actions: []string{"read", "create", "update", "delete"},
+				},
+				Groups: groups,
+			}
+
+			return conf
+		}
+
+		ctlr := api.NewController(makeConfig(config.Groups{"admins": {Users: []string{username}}}))
+		cm := test.NewControllerManager(ctlr)
+		baseURL := cm.StartAndWait()
+
+		defer cm.StopServer()
+
+		// The repository does not exist, so a request that passes authorization gets 404 and one
+		// that is denied gets 403: the status shows the authorization decision.
+		tagsStatus := func(secret string) int {
+			resp, err := resty.R().SetBasicAuth(username, secret).Get(baseURL + "/v2/oracle/secrets/tags/list")
+			So(err, ShouldBeNil)
+
+			return resp.StatusCode()
+		}
+
+		// Enroll while the user is an admin.
+		reqBody, err := json.Marshal(api.APIKeyPayload{Label: "ci"})
+		So(err, ShouldBeNil)
+
+		resp, err := resty.R().SetBody(reqBody).SetBasicAuth(username, password).Post(baseURL + constants.APIKeyPath)
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusCreated)
+
+		var apiKey apiKeyResponse
+		So(json.Unmarshal(resp.Body(), &apiKey), ShouldBeNil)
+
+		So(tagsStatus(apiKey.APIKey), ShouldEqual, http.StatusNotFound)
+
+		Convey("Removing the user from the group revokes the group for the API key", func() {
+			ctlr.LoadNewConfig(makeConfig(config.Groups{"admins": {Users: []string{"someone-else"}}}))
+
+			So(tagsStatus(apiKey.APIKey), ShouldEqual, http.StatusForbidden)
+			So(tagsStatus(password), ShouldEqual, http.StatusForbidden)
+			// the password login must not bring the group back either
+			So(tagsStatus(apiKey.APIKey), ShouldEqual, http.StatusForbidden)
+
+			Convey("Adding the user back restores access without a new login", func() {
+				ctlr.LoadNewConfig(makeConfig(config.Groups{"admins": {Users: []string{username}}}))
+
+				So(tagsStatus(apiKey.APIKey), ShouldEqual, http.StatusNotFound)
+			})
+		})
+
+		Convey("Deleting the group definition revokes the group for the API key", func() {
+			ctlr.LoadNewConfig(makeConfig(config.Groups{}))
+
+			So(tagsStatus(apiKey.APIKey), ShouldEqual, http.StatusForbidden)
+		})
+
+		Convey("Provider groups stored at login are kept", func() {
+			ctlr.LoadNewConfig(makeConfig(config.Groups{}))
+
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername(username)
+			ctx := userAc.DeriveContext(context.Background())
+
+			// as stored by an LDAP or OpenID login that reported the "admins" group
+			So(ctlr.MetaDB.SetUserGroups(ctx, []string{"admins"}), ShouldBeNil)
+
+			So(tagsStatus(apiKey.APIKey), ShouldEqual, http.StatusNotFound)
+		})
+
+		Convey("Groups stored by an older version are not trusted", func() {
+			ctlr.LoadNewConfig(makeConfig(config.Groups{}))
+
+			userAc := reqCtx.NewUserAccessControl()
+			userAc.SetUsername(username)
+			ctx := userAc.DeriveContext(context.Background())
+
+			// an older version stored the config groups of the last login with the provider ones
+			userData, err := ctlr.MetaDB.GetUserData(ctx)
+			So(err, ShouldBeNil)
+
+			userData.Groups = []string{"admins"}
+			userData.ProviderGroupsOnly = false
+			So(ctlr.MetaDB.SetUserData(ctx, userData), ShouldBeNil)
+
+			So(tagsStatus(apiKey.APIKey), ShouldEqual, http.StatusForbidden)
 		})
 	})
 }

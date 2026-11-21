@@ -1856,6 +1856,7 @@ func (dwr DynamoDB) SetUserGroups(ctx context.Context, groups []string) error {
 	}
 
 	userData.Groups = groups
+	userData.ProviderGroupsOnly = true
 
 	return dwr.SetUserData(ctx, userData)
 }

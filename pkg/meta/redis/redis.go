@@ -358,6 +358,7 @@ func (rc *RedisDB) SetUserGroups(ctx context.Context, groups []string) error {
 		}
 
 		userData.Groups = groups
+		userData.ProviderGroupsOnly = true
 
 		userDataBlob, err := json.Marshal(userData)
 		if err != nil {

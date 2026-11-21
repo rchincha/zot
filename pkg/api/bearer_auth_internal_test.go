@@ -29,6 +29,7 @@ import (
 	"zotregistry.dev/zot/v2/pkg/api/constants"
 	apiErr "zotregistry.dev/zot/v2/pkg/api/errors"
 	"zotregistry.dev/zot/v2/pkg/log"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
 	"zotregistry.dev/zot/v2/pkg/test/mocks"
 )
@@ -661,7 +662,7 @@ func TestTokenExchangeDoesNotProxyLocalBasicAuthorizationCredentials(t *testing.
 			GetUserAPIKeyInfoFn:        func(_ string) (string, error) { return "alice", nil },
 			IsAPIKeyExpiredFn:          func(_ context.Context, _ string) (bool, error) { return false, nil },
 			UpdateUserAPIKeyLastUsedFn: func(_ context.Context, _ string) error { return nil },
-			GetUserGroupsFn:            func(_ context.Context) ([]string, error) { return nil, nil },
+			GetUserDataFn:              func(_ context.Context) (mTypes.UserData, error) { return mTypes.UserData{}, nil },
 		},
 	}
 

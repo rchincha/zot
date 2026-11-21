@@ -823,6 +823,8 @@ A key older than `apikeyMaxLifetime` is refused, also if it was created before t
 The stored key is not changed, so raising or removing the setting makes it work again.
 If not set, keys can be created without expiry.
 
+A request made with an API key gets the user's groups from two places. Groups from `accessControl.groups` are read from the current configuration on every request, so removing the user from such a group, or deleting the group, takes effect for existing API keys at once. Groups reported by LDAP or an OpenID/OIDC provider can only be learned when the user logs in, so the key keeps the groups of the user's last login until the user logs in again; set `apikeyMaxLifetime` to bound how long a key can outlive a change made at the identity provider.
+
 ##### How to create an API Key
 
 Create an API key for the current user using the REST API

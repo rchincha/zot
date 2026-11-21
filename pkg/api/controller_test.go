@@ -64,6 +64,7 @@ import (
 	syncConstants "zotregistry.dev/zot/v2/pkg/extensions/sync/constants"
 	"zotregistry.dev/zot/v2/pkg/log"
 	"zotregistry.dev/zot/v2/pkg/meta"
+	mTypes "zotregistry.dev/zot/v2/pkg/meta/types"
 	zreg "zotregistry.dev/zot/v2/pkg/regexp"
 	"zotregistry.dev/zot/v2/pkg/storage"
 	storageConstants "zotregistry.dev/zot/v2/pkg/storage/constants"
@@ -5130,8 +5131,8 @@ func TestAuthnSessionErrors(t *testing.T) {
 				client.SetCookies(cookies)
 
 				ctlr.MetaDB = mocks.MetaDBMock{
-					GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
-						return []string{}, ErrUnexpectedError
+					GetUserDataFn: func(ctx context.Context) (mTypes.UserData, error) {
+						return mTypes.UserData{}, ErrUnexpectedError
 					},
 				}
 
@@ -5150,8 +5151,8 @@ func TestAuthnSessionErrors(t *testing.T) {
 				client.SetCookies(cookies)
 
 				ctlr.MetaDB = mocks.MetaDBMock{
-					GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
-						return []string{}, errors.ErrUserDataNotFound
+					GetUserDataFn: func(ctx context.Context) (mTypes.UserData, error) {
+						return mTypes.UserData{}, errors.ErrUserDataNotFound
 					},
 				}
 
@@ -5469,8 +5470,8 @@ func TestAuthnMetaDBErrors(t *testing.T) {
 				client.SetCookies(cookies)
 
 				ctlr.MetaDB = mocks.MetaDBMock{
-					GetUserGroupsFn: func(ctx context.Context) ([]string, error) {
-						return []string{}, ErrUnexpectedError
+					GetUserDataFn: func(ctx context.Context) (mTypes.UserData, error) {
+						return mTypes.UserData{}, ErrUnexpectedError
 					},
 				}
 

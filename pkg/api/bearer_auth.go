@@ -275,7 +275,9 @@ func (b *BearerAuth) Authenticate(
 			userAc.SaveOnRequest(request)
 
 			if ctlr.MetaDB != nil {
-				if err := ctlr.MetaDB.SetUserGroups(request.Context(), groups); err != nil {
+				// only the token's groups are stored, the config groups are resolved again on every
+				// request that relies on the stored groups (see storedUserGroups)
+				if err := ctlr.MetaDB.SetUserGroups(request.Context(), res.Groups); err != nil {
 					ctlr.Log.Error().Err(err).Str("identity", identity).Msg("failed to update user profile")
 
 					return result, err

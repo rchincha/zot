@@ -217,6 +217,8 @@ type UserDB interface { //nolint:interfacebloat
 	// should be locked for the duration of the entire transaction at a higher level in the app
 	SetUserData(ctx context.Context, userData UserData) error
 
+	// SetUserGroups stores the groups the identity provider reported for the user, without the
+	// groups from the accessControl config (see UserData.Groups).
 	SetUserGroups(ctx context.Context, groups []string) error
 
 	GetUserGroups(ctx context.Context) ([]string, error)
@@ -417,8 +419,14 @@ type (
 type UserData struct {
 	StarredRepos    []string
 	BookmarkedRepos []string
-	Groups          []string
-	APIKeys         map[HashedAPIKey]APIKeyDetails
+	// Groups are the groups the identity provider (LDAP, OpenID, OIDC bearer) reported at the user's
+	// last login. Groups from the accessControl config are not stored: they are resolved from the
+	// current config on every request, so a config change revokes them for API keys and sessions too.
+	Groups []string
+	// ProviderGroupsOnly marks Groups as written by SetUserGroups in that form. Records written before
+	// it existed mixed config groups into Groups, so a stale config group could not be told apart.
+	ProviderGroupsOnly bool
+	APIKeys            map[HashedAPIKey]APIKeyDetails
 }
 
 type Filter struct {

@@ -1861,6 +1861,7 @@ func (bdw *BoltDB) SetUserGroups(ctx context.Context, groups []string) error {
 		}
 
 		userData.Groups = groups
+		userData.ProviderGroupsOnly = true
 
 		err = bdw.setUserData(userid, tx, userData)
 
