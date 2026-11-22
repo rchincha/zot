@@ -630,6 +630,173 @@ func TestTokenExchangeDoesNotProxyLocalBearerAuthorizationCredentials(t *testing
 	}
 }
 
+// A Zot-owned credential must not reach the upstream token service through any channel the
+// proxy forwards: query parameters, form fields, headers, cookies or raw bodies.
+func TestTokenExchangeDoesNotProxyLocalCredentialsInOtherChannels(t *testing.T) {
+	t.Parallel()
+
+	type upstreamRequest struct {
+		header http.Header
+		query  string
+		body   string
+	}
+
+	upstreamRequests := make(chan upstreamRequest, 16)
+
+	proxyServer := httptest.NewServer(http.HandlerFunc(func(response http.ResponseWriter, request *http.Request) {
+		body, _ := io.ReadAll(request.Body)
+		upstreamRequests <- upstreamRequest{request.Header.Clone(), request.URL.RawQuery, string(body)}
+
+		http.SetCookie(response, &http.Cookie{Name: "session", Value: "upstream-cookie"})
+		response.WriteHeader(http.StatusOK)
+	}))
+	defer proxyServer.Close()
+
+	authConfig := &config.AuthConfig{
+		APIKey: true,
+		Bearer: &config.BearerConfig{
+			Realm:   "realm",
+			Service: "service",
+			OIDC: config.BearerOIDCConfigs{{
+				Issuer:    "https://issuer.example.com",
+				Audiences: []string{"zot"},
+			}},
+			UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+				Realm:             proxyServer.URL + "/token",
+				Service:           "upstream",
+				AllowInsecureHTTP: true,
+			},
+		},
+	}
+	bearerAuth := &BearerAuth{
+		authConfig:   authConfig,
+		bearerConfig: authConfig.Bearer,
+		log:          log.NewTestLogger(),
+		oidc:         &OIDCBearerAuthorizer{},
+	}
+
+	handler := bearerAuth.TokenExchangeHandler(nil)
+	apiKey := constants.APIKeysPrefix + "CANARYSECRET123"
+	wrapped := newWrappedCredentialBearerToken("alice", apiKey)
+
+	send := func(method, query, contentType, body string, headers map[string]string) *httptest.ResponseRecorder {
+		var reader io.Reader
+		if body != "" {
+			reader = strings.NewReader(body)
+		}
+
+		request := httptest.NewRequest(method, constants.TokenPath+"?"+query, reader)
+		if contentType != "" {
+			request.Header.Set("Content-Type", contentType)
+		}
+
+		for key, value := range headers {
+			request.Header.Set(key, value)
+		}
+
+		// Drop what an earlier failed subtest left behind, so failures do not cascade.
+		for len(upstreamRequests) > 0 {
+			<-upstreamRequests
+		}
+
+		response := httptest.NewRecorder()
+		handler(response, request)
+
+		return response
+	}
+
+	notProxied := func(t *testing.T, response *httptest.ResponseRecorder, status int) {
+		t.Helper()
+
+		if response.Code != status {
+			t.Fatalf("expected status %d, got %d", status, response.Code)
+		}
+
+		select {
+		case got := <-upstreamRequests:
+			t.Fatalf("expected no upstream request, got %+v", got)
+		default:
+		}
+	}
+
+	proxied := func(t *testing.T, response *httptest.ResponseRecorder) upstreamRequest {
+		t.Helper()
+
+		if response.Code != http.StatusOK {
+			t.Fatalf("expected status %d, got %d", http.StatusOK, response.Code)
+		}
+
+		select {
+		case got := <-upstreamRequests:
+			return got
+		default:
+			t.Fatal("expected the request to be proxied upstream")
+		}
+
+		return upstreamRequest{}
+	}
+
+	// Subtests share the upstream channel, so they run sequentially.
+	t.Run("query parameter", func(t *testing.T) {
+		notProxied(t, send(http.MethodGet, "account=alice&password="+apiKey, "", "", nil), http.StatusUnauthorized)
+	})
+
+	t.Run("wrapped credential in query", func(t *testing.T) {
+		notProxied(t, send(http.MethodGet, "token="+wrapped, "", "", nil), http.StatusUnauthorized)
+	})
+
+	t.Run("unparsed form field", func(t *testing.T) {
+		notProxied(t, send(http.MethodPost, "", "application/x-www-form-urlencoded",
+			"grant_type=client_credentials&client_secret="+apiKey, nil), http.StatusUnauthorized)
+	})
+
+	t.Run("custom header", func(t *testing.T) {
+		notProxied(t, send(http.MethodGet, "", "", "", map[string]string{"X-Custom": apiKey}), http.StatusUnauthorized)
+	})
+
+	t.Run("custom header with auth scheme", func(t *testing.T) {
+		notProxied(t, send(http.MethodGet, "", "", "", map[string]string{"X-Custom": "Bearer " + wrapped}),
+			http.StatusUnauthorized)
+	})
+
+	t.Run("json body", func(t *testing.T) {
+		notProxied(t, send(http.MethodPost, "", "application/json", `{"password":"`+apiKey+`"}`, nil),
+			http.StatusUnsupportedMediaType)
+	})
+
+	t.Run("cookies stay on zot's origin", func(t *testing.T) {
+		response := send(http.MethodGet, "scope=repository:app:pull", "", "",
+			map[string]string{"Cookie": "session=ZOT-SESSION-SECRET"})
+
+		got := proxied(t, response)
+		if got.header.Get("Cookie") != "" {
+			t.Fatalf("expected the zot session cookie not to be forwarded, got %q", got.header.Get("Cookie"))
+		}
+
+		if setCookie := response.Header().Get("Set-Cookie"); setCookie != "" {
+			t.Fatalf("expected the upstream cookie not to be relayed, got %q", setCookie)
+		}
+	})
+
+	t.Run("upstream credentials are still forwarded", func(t *testing.T) {
+		// "zak_" inside a value is not a zot credential: only whole values are matched.
+		upstreamToken := "eyJhbGciOi.payload_zak_tail.sig"
+
+		got := proxied(t, send(http.MethodPost, "scope=repository:app:pull", "application/x-www-form-urlencoded",
+			"grant_type=refresh_token&refresh_token="+upstreamToken, map[string]string{
+				"Authorization": "Basic " + base64.StdEncoding.EncodeToString([]byte("extuser:upstream-pw")),
+			}))
+
+		if !strings.Contains(got.body, "refresh_token="+upstreamToken) {
+			t.Fatalf("expected the upstream refresh token to be forwarded, got body %q", got.body)
+		}
+
+		if !strings.HasPrefix(got.header.Get("Authorization"), "Basic ") {
+			t.Fatalf("expected the upstream Basic credential to be forwarded, got %q", got.header.Get("Authorization"))
+		}
+	})
+}
+
 func TestTokenExchangeDoesNotProxyLocalBasicAuthorizationCredentials(t *testing.T) {
 	t.Parallel()
 

@@ -38,6 +38,9 @@ type tokenExchangeRequest struct {
 	// discardedFormSecret is set when a form password or token field was present
 	// but empty after trim. That attempt must not receive the anonymous marker.
 	discardedFormSecret bool
+	// hasLocalFormValue is set when any form field, not only the credential fields parsed
+	// above, carries a Zot-owned credential; such a request must not be proxied upstream.
+	hasLocalFormValue bool
 }
 
 type localOIDCTokenOwner int
@@ -88,6 +91,12 @@ func normalizeTokenExchangeRequest(request *http.Request) (*tokenExchangeRequest
 	form, parseErr := url.ParseQuery(string(bodyBytes))
 	if parseErr != nil {
 		return nil, fmt.Errorf("%w: %w", zerr.ErrInvalidTokenProxyForm, parseErr)
+	}
+
+	for _, values := range form {
+		if slices.ContainsFunc(values, isLocalCredentialValue) {
+			tokenRequest.hasLocalFormValue = true
+		}
 	}
 
 	formUsername := form.Get("username")
@@ -237,9 +246,12 @@ func bearerTokenFromAuthHeader(header string) (string, bool) {
 
 // requestHasLocalCredential reports whether the request carries a Zot-owned
 // credential (an API key or a Zot-issued wrapped credential) in the Authorization
-// header. This is a defense-in-depth guard for the upstream token proxy: even if a
-// credential is encoded in a way the local exchange parsing does not recognize, it
-// must never be forwarded to a third-party token service.
+// header, or as any query parameter or header value. This is a defense-in-depth
+// guard for the upstream token proxy, which forwards query parameters and headers
+// as they are: even if a credential is sent in a way the local exchange parsing
+// does not recognize, it must never be forwarded to a third-party token service.
+// Form bodies are covered by normalizeTokenExchangeRequest, and other bodies are
+// never proxied.
 func requestHasLocalCredential(request *http.Request) bool {
 	if _, password, err := getUsernamePasswordBasicAuth(request); err == nil && isLocalCredentialSecret(password) {
 		return true
@@ -250,7 +262,34 @@ func requestHasLocalCredential(request *http.Request) bool {
 		return true
 	}
 
+	for _, values := range request.URL.Query() {
+		if slices.ContainsFunc(values, isLocalCredentialValue) {
+			return true
+		}
+	}
+
+	for _, values := range request.Header {
+		if slices.ContainsFunc(values, isLocalCredentialValue) {
+			return true
+		}
+	}
+
 	return false
+}
+
+// isLocalCredentialValue reports whether a free-form request value is a Zot-owned
+// credential, either on its own or after an auth scheme ("Bearer zak_..."). Only
+// whole values are matched: "_" is a base64url character, so searching for the
+// prefix inside values would also match random upstream tokens.
+func isLocalCredentialValue(value string) bool {
+	value = strings.TrimSpace(value)
+	if isLocalCredentialSecret(value) {
+		return true
+	}
+
+	_, credential, ok := strings.Cut(value, " ")
+
+	return ok && isLocalCredentialSecret(strings.TrimSpace(credential))
 }
 
 func parseWrappedCredentialBearerToken(token string) (wrappedCredentialBearer, error) {

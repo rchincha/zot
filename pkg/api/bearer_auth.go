@@ -526,7 +526,7 @@ func (b *BearerAuth) TokenExchangeHandler(ctlr *Controller) http.HandlerFunc {
 		// token service, even when it is encoded in a way the local exchange
 		// parsing does not recognize (for example, non-canonical Basic header
 		// whitespace).
-		locallyOwned = locallyOwned || requestHasLocalCredential(request)
+		locallyOwned = locallyOwned || tokenRequest.hasLocalFormValue || requestHasLocalCredential(request)
 
 		if locallyOwned {
 			oidcTokenExchangeUnauthorized(response, request, authConfig)
@@ -535,10 +535,7 @@ func (b *BearerAuth) TokenExchangeHandler(ctlr *Controller) http.HandlerFunc {
 		}
 
 		if authConfig.IsUpstreamTokenEndpointConfigured() {
-			if err := b.proxyOIDCBearerTokenExchange(response, request); err != nil {
-				b.log.Error().Err(err).Msg("failed to proxy oidc bearer token exchange")
-				writeTokenExchangeError(response, http.StatusBadGateway, "failed to proxy token request")
-			}
+			b.proxyTokenExchange(response, request)
 
 			return
 		}
@@ -589,6 +586,24 @@ func anonymousTokenHeaderAllowed(request *http.Request) bool {
 	}
 
 	return hasEmptyBasicAuthorizationHeader(request)
+}
+
+// proxyTokenExchange forwards a token request that carries no Zot-owned credential to the
+// upstream token endpoint.
+func (b *BearerAuth) proxyTokenExchange(response http.ResponseWriter, request *http.Request) {
+	// Token requests are bodiless GETs or form POSTs, and only form bodies are checked for
+	// local credentials, so no other body may be forwarded unchecked.
+	if hasTokenRequestBody(request) && !isFormURLEncoded(request.Header.Get("Content-Type")) {
+		writeTokenExchangeError(response, http.StatusUnsupportedMediaType,
+			"token request body must be application/x-www-form-urlencoded")
+
+		return
+	}
+
+	if err := b.proxyOIDCBearerTokenExchange(response, request); err != nil {
+		b.log.Error().Err(err).Msg("failed to proxy oidc bearer token exchange")
+		writeTokenExchangeError(response, http.StatusBadGateway, "failed to proxy token request")
+	}
 }
 
 func (b *BearerAuth) proxyOIDCBearerTokenExchange(response http.ResponseWriter, request *http.Request) error {
@@ -696,6 +711,10 @@ func tokenProxyRequestBody(request *http.Request, upstreamService string) (io.Re
 	return bytes.NewReader(encodedBody), int64(len(encodedBody)), nil
 }
 
+func hasTokenRequestBody(request *http.Request) bool {
+	return request.Body != nil && request.Body != http.NoBody && request.ContentLength != 0
+}
+
 func isFormURLEncoded(contentType string) bool {
 	mediaType, _, err := mime.ParseMediaType(contentType)
 	if err != nil {
@@ -736,6 +755,11 @@ func tokenProxyHeaderShouldBeSkipped(header string) bool {
 	switch header {
 	case "Connection", "Content-Length", "Keep-Alive", "Proxy-Authenticate", "Proxy-Authorization", "Te", "Trailer",
 		"Transfer-Encoding", "Upgrade":
+		return true
+	// Cookies belong to zot's origin, not the upstream's: a browser sends the zot session
+	// cookie with every request here, and it must not reach the upstream token service.
+	// Likewise an upstream must not set cookies on zot's origin.
+	case "Cookie", "Set-Cookie":
 		return true
 	default:
 		return false
