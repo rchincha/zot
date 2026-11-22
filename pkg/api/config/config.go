@@ -984,13 +984,21 @@ func (c *Config) isUntaggedRetentionEnabledForPolicy(retentionPolicy RetentionPo
 		c.isUntaggedRetentionEnabled(*retentionPolicy.KeepUntagged)
 }
 
-func isSensitiveConfigMapKey(key string) bool {
+// RedactedValue replaces secrets in sanitized configs and logs.
+const RedactedValue = "******"
+
+// IsSensitiveKey reports whether a config map key or HTTP header name carries a
+// secret. Matching ignores case, '_' and '-', so "X-Api-Key" == "xapikey".
+func IsSensitiveKey(key string) bool {
 	normalized := strings.ToLower(strings.ReplaceAll(strings.ReplaceAll(key, "_", ""), "-", ""))
 
 	switch normalized {
 	case "accesskey", "secretkey", "password", "secret", "token",
 		"clientsecret", "sessionhashkey", "sessionencryptkey", "sentinelpassword",
-		"authorization", "apikey", "bearer", "xapikey":
+		"authorization", "apikey", "bearer", "xapikey",
+		// HTTP request headers: a logged session cookie (UI login, OIDC state) is
+		// replayable for the session lifetime, so cookies are as sensitive as tokens.
+		"proxyauthorization", "cookie", "setcookie", "xauthtoken":
 		return true
 	default:
 		return false
@@ -999,16 +1007,16 @@ func isSensitiveConfigMapKey(key string) bool {
 
 func sanitizeStringMapValues(values map[string]string) {
 	for key := range values {
-		if isSensitiveConfigMapKey(key) {
-			values[key] = "******"
+		if IsSensitiveKey(key) {
+			values[key] = RedactedValue
 		}
 	}
 }
 
 func sanitizeMapValues(values map[string]any) {
 	for key, value := range values {
-		if isSensitiveConfigMapKey(key) {
-			values[key] = "******"
+		if IsSensitiveKey(key) {
+			values[key] = RedactedValue
 
 			continue
 		}

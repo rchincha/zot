@@ -206,6 +206,48 @@ func TestSessionLogger_redactsAuthorizationAndLogsUsernameFromContext(t *testing
 	assert.NotContains(t, out, "super-secret-token")
 }
 
+func TestSessionLogger_redactsCredentialHeaders(t *testing.T) {
+	t.Parallel()
+
+	var buf bytes.Buffer
+
+	ctlr := &zotapi.Controller{
+		Log:     log.NewLoggerWithWriter("info", &buf),
+		Metrics: monitoring.NewNopMetricServer(),
+	}
+	t.Cleanup(ctlr.Metrics.Stop)
+
+	inner := http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	})
+
+	wrapped := zotapi.SessionLogger(ctlr)(inner)
+
+	req := httptest.NewRequestWithContext(context.Background(), http.MethodGet, "/v2/_catalog", http.NoBody)
+	req.Header.Set("Cookie", "session=leaked-session-cookie; statecookie=leaked-oidc-state")
+	req.Header.Set("Proxy-Authorization", "Basic leaked-proxy-creds")
+	req.Header.Set("Set-Cookie", "session=leaked-set-cookie")
+	req.Header.Set("X-Auth-Token", "leaked-custom-token")
+	req.Header.Set("X-Api-Key", "leaked-api-key")
+	req.Header.Set("X-Zot-Api-Client", "zot-ui")
+	req.Header.Set("Accept", "application/json")
+
+	recorder := httptest.NewRecorder()
+	wrapped.ServeHTTP(recorder, req)
+
+	out := buf.String()
+
+	assert.NotContains(t, out, "leaked")
+
+	for _, key := range []string{"Cookie", "Proxy-Authorization", "Set-Cookie", "X-Auth-Token", "X-Api-Key"} {
+		assert.Contains(t, out, `"`+key+`":["******"]`)
+	}
+
+	// Non-sensitive headers are still logged verbatim.
+	assert.Contains(t, out, `"X-Zot-Api-Client":["zot-ui"]`)
+	assert.Contains(t, out, `"Accept":["application/json"]`)
+}
+
 func TestSessionLogger_omitsUsernameWhenAnonymous(t *testing.T) {
 	t.Parallel()
 

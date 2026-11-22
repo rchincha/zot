@@ -10,6 +10,7 @@ import (
 	"github.com/didip/tollbooth/v7"
 	"github.com/gorilla/mux"
 
+	"zotregistry.dev/zot/v2/pkg/api/config"
 	"zotregistry.dev/zot/v2/pkg/extensions/monitoring"
 	"zotregistry.dev/zot/v2/pkg/log"
 	reqCtx "zotregistry.dev/zot/v2/pkg/requestcontext"
@@ -117,8 +118,10 @@ func SessionLogger(ctlr *Controller) mux.MiddlewareFunc {
 			log := logger.Info() //nolint: zerologlint // false positive, the Msg call is below
 
 			for key, value := range request.Header {
-				if key == "Authorization" { // anonymize from logs
-					value = []string{"******"}
+				// Credentials (Authorization, session/OIDC cookies, proxy creds) must
+				// never reach the log. Keep the key so its presence is still visible.
+				if config.IsSensitiveKey(key) {
+					value = []string{config.RedactedValue}
 				}
 
 				headers[key] = value
