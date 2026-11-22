@@ -745,6 +745,18 @@ func getImageListWithCVEFixed(
 ) (*gql_generated.PaginatedImagesResult, error) {
 	imageList := make([]*gql_generated.ImageSummary, 0)
 
+	// Check access before touching the repo: the lookup below fails differently for a
+	// missing repo than for an existing one, which would reveal private repo names.
+	if ok, err := reqCtx.RepoIsUserAvailable(ctx, repo); !ok || err != nil {
+		log.Info().Err(err).Str("repository", repo).Bool("availability", ok).Str("component", "graphql").
+			Msg("repo user availability")
+
+		return &gql_generated.PaginatedImagesResult{
+			Page:    &gql_generated.PageInfo{},
+			Results: imageList,
+		}, nil //nolint:nilerr // don't give details to a potential attacker
+	}
+
 	log.Info().Str("repository", repo).Str("CVE", cveID).Msg("extracting list of tags where this cve is fixed")
 
 	tagsInfo, err := cveInfo.GetImageListWithCVEFixed(ctx, repo, cveID)

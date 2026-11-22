@@ -2994,6 +2994,49 @@ func TestExpandedRepoInfoErrors(t *testing.T) {
 	})
 }
 
+// A caller denied a repo must get the same empty answer whether or not it exists,
+// and must not trigger a CVE lookup on it.
+func TestImageListWithCVEFixedAuthorization(t *testing.T) {
+	log := log.NewTestLogger()
+
+	Convey("ImageListWithCVEFixed checks repo access first", t, func() {
+		lookups := 0
+		cveInfo := mocks.CveInfoMock{
+			GetImageListWithCVEFixedFn: func(ctx context.Context, repo, cveID string) ([]cvemodel.TagInfo, error) {
+				lookups++
+
+				return nil, zerr.ErrRepoMetaNotFound
+			},
+		}
+
+		userAc := reqCtx.NewUserAccessControl()
+		userAc.SetUsername("alice")
+		userAc.SetGlobPatterns("read", map[string]bool{
+			"alice/**":       true,
+			"bob-private/**": false,
+		})
+
+		ctx := graphql.WithResponseContext(userAc.DeriveContext(context.Background()),
+			graphql.DefaultErrorPresenter, graphql.DefaultRecover)
+
+		Convey("denied repo: empty result, no error, no lookup", func() {
+			for _, repo := range []string{"bob-private/secret", "bob-private/nope"} {
+				images, err := getImageListWithCVEFixed(ctx, "CVE1", repo, cveInfo, nil, nil, mocks.MetaDBMock{}, log)
+				So(err, ShouldBeNil)
+				So(images.Results, ShouldBeEmpty)
+			}
+
+			So(lookups, ShouldEqual, 0)
+		})
+
+		Convey("readable repo: the lookup runs and its error is returned", func() {
+			_, err := getImageListWithCVEFixed(ctx, "CVE1", "alice/nope", cveInfo, nil, nil, mocks.MetaDBMock{}, log)
+			So(err, ShouldWrap, zerr.ErrRepoMetaNotFound)
+			So(lookups, ShouldEqual, 1)
+		})
+	})
+}
+
 func TestUtils(t *testing.T) {
 	Convey("utils", t, func() {
 		Convey("", func() {
