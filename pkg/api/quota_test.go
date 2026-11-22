@@ -103,6 +103,61 @@ func TestQuotaEnforcement(t *testing.T) {
 	})
 }
 
+// Blob uploads create the repository layout on disk before any manifest is pushed, so at the
+// limit they must be rejected for a new repository too, or blob-only repositories would pile up
+// past maxRepos until GC reaps them.
+func TestQuotaRejectsBlobUploadToNewRepoAtLimit(t *testing.T) {
+	Convey("Given a registry at its maxRepos limit", t, func() {
+		baseURL, stop := startQuotaServer(t, 2)
+		defer stop()
+
+		So(UploadImage(CreateRandomImage(), baseURL, "repo1", "v1"), ShouldBeNil)
+		So(UploadImage(CreateRandomImage(), baseURL, "repo2", "v1"), ShouldBeNil)
+
+		blob := []byte("quota-bypass-blob")
+		digest := godigest.FromBytes(blob)
+
+		Convey("Every way of starting an upload into a new repo is rejected with 413", func() {
+			requests := map[string]*resty.Request{
+				"session": resty.R(),
+				"monolithic": resty.R().SetQueryParam("digest", digest.String()).
+					SetHeader("Content-Type", "application/octet-stream").SetBody(blob),
+				"mount": resty.R().SetQueryParam("mount", digest.String()).SetQueryParam("from", "repo1"),
+			}
+
+			for name, req := range requests {
+				resp, err := req.Post(baseURL + "/v2/bypass-" + name + "/blobs/uploads/")
+				So(err, ShouldBeNil)
+				So(resp.StatusCode(), ShouldEqual, http.StatusRequestEntityTooLarge)
+				So(string(resp.Body()), ShouldContainSubstring, `"limit":"2"`)
+			}
+
+			resp, err := resty.R().Get(baseURL + "/v2/_catalog")
+			So(err, ShouldBeNil)
+			So(string(resp.Body()), ShouldNotContainSubstring, "bypass-")
+		})
+
+		Convey("Uploads into an existing repo are still allowed", func() {
+			resp, err := resty.R().Post(baseURL + "/v2/repo1/blobs/uploads/")
+			So(err, ShouldBeNil)
+			So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+		})
+	})
+
+	Convey("Below the limit, a new repo can start with blob uploads", t, func() {
+		baseURL, stop := startQuotaServer(t, 2)
+		defer stop()
+
+		So(UploadImage(CreateRandomImage(), baseURL, "repo1", "v1"), ShouldBeNil)
+
+		resp, err := resty.R().Post(baseURL + "/v2/repo2/blobs/uploads/")
+		So(err, ShouldBeNil)
+		So(resp.StatusCode(), ShouldEqual, http.StatusAccepted)
+
+		So(UploadImage(CreateRandomImage(), baseURL, "repo2", "v1"), ShouldBeNil)
+	})
+}
+
 func TestQuotaDisabled(t *testing.T) {
 	Convey("Given a registry with maxRepos set to 0 (disabled)", t, func() {
 		baseURL, stop := startQuotaServer(t, 0)

@@ -190,8 +190,14 @@ To limit the maximum number of repositories that can be created, set:
 ```
 
 When the limit is reached, pushes that would create a new repository are
-rejected with HTTP 413. Pushes to existing repositories are always allowed.
-Setting maxRepos to 0 or omitting it disables enforcement.
+rejected with HTTP 413: both the manifest push and the blob upload (including
+a cross-repository mount) that starts it. Pushes to existing repositories are
+always allowed. Setting maxRepos to 0 or omitting it disables enforcement.
+
+A repository counts towards the limit once a manifest has been pushed to it.
+Below the limit, a repository that has received blobs but no manifest yet is
+not counted; it is removed in a garbage collection cycle once its blobs pass
+the GC delay.
 
 A repository stops counting towards the limit when it is removed from
 storage: immediately when its last manifest is deleted and no blobs or

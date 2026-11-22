@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/gorilla/mux"
@@ -73,16 +74,9 @@ func repoQuotaMiddleware(conf *config.Config, metaDB mTypes.MetaDB, log log.Logg
 
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if r.Method != http.MethodPut {
-				next.ServeHTTP(w, r)
-
-				return
-			}
-
 			vars := mux.Vars(r)
 
-			// "reference" is only set on /v2/{name}/manifests/{reference} routes.
-			if _, ok := vars["reference"]; !ok {
+			if !mayCreateRepo(r, vars) {
 				next.ServeHTTP(w, r)
 
 				return
@@ -150,6 +144,29 @@ func repoQuotaMiddleware(conf *config.Config, metaDB mTypes.MetaDB, log log.Logg
 
 			next.ServeHTTP(w, r)
 		})
+	}
+}
+
+// mayCreateRepo reports whether r can create a repository that does not exist yet: a manifest
+// push, or the POST that starts a blob upload (session, monolithic or cross-repo mount), which
+// lays the repository out on disk before any manifest arrives. The PATCH/PUT requests that
+// continue an upload session need no gate: their session could only be opened by that POST.
+//
+// Such a blob-only repository has no MetaDB record, so it is not counted by CountRepos; GC
+// removes it once its blobs pass the GC delay. Below the limit it is therefore allowed, as
+// every first push starts this way; at the limit the POST is rejected, since the manifest
+// push that follows would be rejected anyway.
+func mayCreateRepo(r *http.Request, vars map[string]string) bool {
+	switch r.Method {
+	case http.MethodPut:
+		// "reference" is only set on /v2/{name}/manifests/{reference} routes.
+		_, ok := vars["reference"]
+
+		return ok
+	case http.MethodPost:
+		return strings.HasSuffix(r.URL.Path, "/blobs/uploads/")
+	default:
+		return false
 	}
 }
 
