@@ -1696,7 +1696,7 @@ func (dwr *DynamoDB) ToggleBookmarkRepo(ctx context.Context, repo string) (
 		return mTypes.NotChanged, err
 	}
 
-	if userAc.IsAnonymous() || !userAc.Can(constants.ReadPermission, repo) {
+	if userAc.IsAnonymous() || !userAc.CanOnResource(constants.ReadPermission, repo, "") {
 		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 	}
 
@@ -1745,7 +1745,7 @@ func (dwr *DynamoDB) ToggleStarRepo(ctx context.Context, repo string) (
 		return mTypes.NotChanged, err
 	}
 
-	if userAc.IsAnonymous() || !userAc.Can(constants.ReadPermission, repo) {
+	if userAc.IsAnonymous() || !userAc.CanOnResource(constants.ReadPermission, repo, "") {
 		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 	}
 

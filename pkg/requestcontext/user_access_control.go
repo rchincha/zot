@@ -322,13 +322,18 @@ func (uac *UserAccessControl) DeriveContext(ctx context.Context) context.Context
 	return context.WithValue(ctx, GetContextKey(), *uac)
 }
 
+// RepoIsUserAvailable reports whether the caller may read repoName. It gates
+// search/metaDB results, which have no OCI route of their own, so it must apply the
+// same policy conditions as a direct pull: glob-only Can would admit a user whose
+// read policy matches but whose condition is false. No reference is known here, so
+// conditions on req.reference/req.tag see it empty.
 func RepoIsUserAvailable(ctx context.Context, repoName string) (bool, error) {
 	uac, err := UserAcFromContext(ctx)
 	if err != nil {
 		return false, err
 	}
 
-	return uac.Can(constants.ReadPermission, repoName), nil
+	return uac.CanOnResource(constants.ReadPermission, repoName, ""), nil
 }
 
 func CanDelete(ctx context.Context, repoName string) (bool, error) {

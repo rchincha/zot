@@ -128,7 +128,7 @@ func (rc *RedisDB) ToggleStarRepo(ctx context.Context, repo string) (mTypes.Togg
 		return mTypes.NotChanged, err
 	}
 
-	if userAc.IsAnonymous() || !userAc.Can(constants.ReadPermission, repo) {
+	if userAc.IsAnonymous() || !userAc.CanOnResource(constants.ReadPermission, repo, "") {
 		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 	}
 
@@ -215,7 +215,7 @@ func (rc *RedisDB) ToggleBookmarkRepo(ctx context.Context, repo string) (mTypes.
 		return mTypes.NotChanged, err
 	}
 
-	if userAc.IsAnonymous() || !userAc.Can(constants.ReadPermission, repo) {
+	if userAc.IsAnonymous() || !userAc.CanOnResource(constants.ReadPermission, repo, "") {
 		return mTypes.NotChanged, zerr.ErrUserDataNotAllowed
 	}
 
