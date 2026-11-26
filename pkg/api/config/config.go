@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"maps"
+	"net/url"
 	"os"
 	"slices"
 	"strings"
@@ -998,17 +999,132 @@ func IsSensitiveKey(key string) bool {
 		"authorization", "apikey", "bearer", "xapikey",
 		// HTTP request headers: a logged session cookie (UI login, OIDC state) is
 		// replayable for the session lifetime, so cookies are as sensitive as tokens.
-		"proxyauthorization", "cookie", "setcookie", "xauthtoken":
+		"proxyauthorization", "cookie", "setcookie", "xauthtoken",
+		// storage driver and connection-string secrets (Azure AccountKey=, SAS tokens),
+		// and the session/cluster hash keys.
+		"accountkey", "connectionstring", "sharedaccesskey", "sharedaccesssignature",
+		"sastoken", "sessiontoken", "credentials", "hashkey", "encryptkey",
+		// URL query parameters of signed or token-carrying URLs: Azure SAS "sig",
+		// S3/GCS presigned URLs, OAuth2 tokens passed in the query.
+		"sig", "signature", "xamzsignature", "xamzcredential", "xamzsecuritytoken",
+		"xgoogsignature", "xgoogcredential", "accesstoken", "refreshtoken", "idtoken":
 		return true
 	default:
 		return false
 	}
 }
 
+// RedactSecretsInValue masks secrets embedded in a config value whose key is
+// not itself sensitive: the password (or a lone username, often a token) in a
+// URL's userinfo, sensitive URL query parameters, and sensitive pairs of a
+// ';'-separated "key=value" connection string such as Azure's AccountKey=.
+// Key-name matching alone misses these, e.g. a redis cacheDriver "url".
+func RedactSecretsInValue(value string) string {
+	if strings.Contains(value, ";") && strings.Contains(value, "=") {
+		return redactConnectionString(value)
+	}
+
+	return redactURLSecrets(value)
+}
+
+func redactConnectionString(value string) string {
+	parts := strings.Split(value, ";")
+
+	for idx, part := range parts {
+		key, val, found := strings.Cut(part, "=")
+		if !found {
+			continue
+		}
+
+		if IsSensitiveKey(strings.TrimSpace(key)) {
+			parts[idx] = key + "=" + RedactedValue
+		} else {
+			// e.g. BlobEndpoint=https://...?sig=...
+			parts[idx] = key + "=" + redactURLSecrets(val)
+		}
+	}
+
+	return strings.Join(parts, ";")
+}
+
+func redactURLSecrets(value string) string {
+	schemeEnd := strings.Index(value, "://")
+	if schemeEnd < 0 {
+		return value
+	}
+
+	parsed, err := url.Parse(value)
+	if err != nil {
+		// unparseable (e.g. an unescaped '/' or '#' in a password): fail closed and
+		// mask everything between the scheme and the last '@'.
+		if at := strings.LastIndex(value, "@"); at > schemeEnd {
+			return value[:schemeEnd+len("://")] + RedactedValue + value[at:]
+		}
+
+		return value
+	}
+
+	changed := false
+	userinfo := ""
+
+	if parsed.User != nil {
+		// built by hand and spliced back below: url.URL.String() would escape the
+		// '*' of RedactedValue in userinfo.
+		if _, hasPassword := parsed.User.Password(); hasPassword {
+			userinfo = url.User(parsed.User.Username()).String() + ":" + RedactedValue
+		} else {
+			userinfo = RedactedValue
+		}
+
+		parsed.User = nil
+		changed = true
+	}
+
+	if parsed.RawQuery != "" {
+		// rebuild by hand rather than via url.Values.Encode to keep parameter order
+		params := strings.Split(parsed.RawQuery, "&")
+
+		for idx, param := range params {
+			name, _, _ := strings.Cut(param, "=")
+
+			unescapedName, err := url.QueryUnescape(name)
+			if err != nil {
+				unescapedName = name
+			}
+
+			if IsSensitiveKey(unescapedName) {
+				params[idx] = name + "=" + RedactedValue
+				changed = true
+			}
+		}
+
+		parsed.RawQuery = strings.Join(params, "&")
+	}
+
+	if !changed {
+		return value
+	}
+
+	redacted := parsed.String()
+	if userinfo != "" {
+		redacted = strings.Replace(redacted, "://", "://"+userinfo+"@", 1)
+	}
+
+	return redacted
+}
+
+func redactSecretsInValues(values []string) {
+	for idx := range values {
+		values[idx] = RedactSecretsInValue(values[idx])
+	}
+}
+
 func sanitizeStringMapValues(values map[string]string) {
-	for key := range values {
+	for key, value := range values {
 		if IsSensitiveKey(key) {
 			values[key] = RedactedValue
+		} else {
+			values[key] = RedactSecretsInValue(value)
 		}
 	}
 }
@@ -1022,6 +1138,8 @@ func sanitizeMapValues(values map[string]any) {
 		}
 
 		switch typedVal := value.(type) {
+		case string:
+			values[key] = RedactSecretsInValue(typedVal)
 		case map[string]any:
 			sanitizeMapValues(typedVal)
 		case map[string]string:
@@ -1033,14 +1151,60 @@ func sanitizeMapValues(values map[string]any) {
 }
 
 func sanitizeSliceValues(values []any) {
-	for _, value := range values {
+	for idx, value := range values {
 		switch typedVal := value.(type) {
+		case string:
+			values[idx] = RedactSecretsInValue(typedVal)
 		case map[string]any:
 			sanitizeMapValues(typedVal)
 		case map[string]string:
 			sanitizeStringMapValues(typedVal)
 		case []any:
 			sanitizeSliceValues(typedVal)
+		}
+	}
+}
+
+// sanitizeAuthURLs scrubs credentials embedded in the URL-typed auth fields;
+// they are not matched by key name like the driver maps are.
+func sanitizeAuthURLs(auth *AuthConfig) {
+	if auth == nil {
+		return
+	}
+
+	if auth.LDAP != nil {
+		auth.LDAP.Address = RedactSecretsInValue(auth.LDAP.Address)
+	}
+
+	if auth.Bearer == nil {
+		return
+	}
+
+	auth.Bearer.Realm = RedactSecretsInValue(auth.Bearer.Realm)
+
+	if auth.Bearer.UpstreamTokenEndpoint != nil {
+		auth.Bearer.UpstreamTokenEndpoint.Realm = RedactSecretsInValue(auth.Bearer.UpstreamTokenEndpoint.Realm)
+	}
+
+	for i := range auth.Bearer.OIDC {
+		auth.Bearer.OIDC[i].Issuer = RedactSecretsInValue(auth.Bearer.OIDC[i].Issuer)
+	}
+}
+
+// sanitizeSyncURLs scrubs credentials embedded in sync upstream URLs and the
+// oauth2 credential helper settings (e.g. its tokenURL).
+func sanitizeSyncURLs(extensions *extconf.ExtensionConfig) {
+	if extensions == nil || extensions.Sync == nil {
+		return
+	}
+
+	for i := range extensions.Sync.Registries {
+		registry := &extensions.Sync.Registries[i]
+
+		redactSecretsInValues(registry.URLs)
+
+		if registry.Oauth2CredentialHelper != nil {
+			sanitizeMapValues(registry.Oauth2CredentialHelper)
 		}
 	}
 }
@@ -1110,10 +1274,10 @@ func (c *Config) Sanitize() *Config {
 					ClientID:     config.ClientID,
 					ClientSecret: "******",
 					KeyPath:      config.KeyPath,
-					Issuer:       config.Issuer,
-					DiscoveryURL: config.DiscoveryURL,
-					AuthURL:      config.AuthURL,
-					TokenURL:     config.TokenURL,
+					Issuer:       RedactSecretsInValue(config.Issuer),
+					DiscoveryURL: RedactSecretsInValue(config.DiscoveryURL),
+					AuthURL:      RedactSecretsInValue(config.AuthURL),
+					TokenURL:     RedactSecretsInValue(config.TokenURL),
 					Scopes:       config.Scopes,
 					ClaimMapping: config.ClaimMapping,
 				}
@@ -1121,8 +1285,28 @@ func (c *Config) Sanitize() *Config {
 		}
 	}
 
+	sanitizedConfig.HTTP.ExternalURL = RedactSecretsInValue(sanitizedConfig.HTTP.ExternalURL)
+
+	sanitizeAuthURLs(sanitizedConfig.HTTP.Auth)
+	sanitizeSyncURLs(sanitizedConfig.Extensions)
+
+	// the hash key decides which member owns a repository; not a credential, but
+	// not meant to be published either.
+	if sanitizedConfig.Cluster != nil && sanitizedConfig.Cluster.HashKey != "" {
+		sanitizedConfig.Cluster.HashKey = RedactedValue
+	}
+
 	if c.Extensions != nil && c.Extensions.Events != nil {
 		for i := range c.Extensions.Events.Sinks {
+			sink := &sanitizedConfig.Extensions.Events.Sinks[i]
+
+			sink.Address = RedactSecretsInValue(sink.Address)
+
+			if sink.Proxy != nil {
+				proxy := RedactSecretsInValue(*sink.Proxy)
+				sink.Proxy = &proxy
+			}
+
 			if sanitizedConfig.Extensions.Events.Sinks[i].Headers != nil {
 				sanitizeStringMapValues(sanitizedConfig.Extensions.Events.Sinks[i].Headers)
 			}

@@ -370,6 +370,147 @@ func TestConfig(t *testing.T) {
 			So(conf.HTTP.Auth.SessionDriver["token"], ShouldEqual, "session-token")
 		})
 
+		Convey("Test Sanitize() with secrets embedded in URLs and connection strings", func() {
+			conf := config.New()
+
+			conf.Storage.StorageDriver = map[string]any{ //nolint:gosec // test fixture
+				"name":             "azure",
+				"connectionstring": "DefaultEndpointsProtocol=https;AccountName=acct;AccountKey=azure-key",
+				"serviceurl":       "https://acct.blob.core.windows.net/?sv=2022-11-02&sig=sas-sig&sp=rl",
+				"regionendpoint":   "https://s3user:s3-pass@minio.example.com:9000",
+				"endpoints":        []any{"https://token-only@mirror.example.com"},
+				"plainurl":         "https://minio.example.com:9000/path?region=us-east-1",
+			}
+			conf.Storage.CacheDriver = map[string]any{ //nolint:gosec // test fixture
+				"name": "redis",
+				"url":  "redis://user:redis-pass@redis.example.com:6379",
+			}
+			conf.Storage.SubPaths = map[string]config.StorageConfig{
+				"/a": {CacheDriver: map[string]any{"name": "redis", "url": "redis://:sub-pass@redis.example.com"}},
+			}
+			conf.HTTP.ExternalURL = "https://zot.example.com"
+			conf.HTTP.Auth = &config.AuthConfig{
+				SessionDriver: map[string]any{ //nolint:gosec // test fixture
+					"name": "redis",
+					"url":  "rediss://user:session-pass@redis.example.com:6380",
+					// unescaped '/' in the password: url.Parse fails, still masked
+					"backup": "redis://user:pa/ss#@redis.example.com",
+				},
+				Bearer: &config.BearerConfig{ //nolint:gosec // test fixture
+					Realm: "https://realm-user:realm-pass@auth.example.com/token",
+					UpstreamTokenEndpoint: &config.UpstreamTokenEndpointConfig{
+						Realm: "https://auth.example.com/token?access_token=upstream-tok",
+					},
+					OIDC: config.BearerOIDCConfigs{{Issuer: "https://u:oidc-pass@issuer.example.com"}}, //nolint:gosec // test fixture
+				},
+				OpenID: &config.OpenIDConfig{
+					Providers: map[string]config.OpenIDProviderConfig{
+						"oidc": { //nolint:gosec // test fixture
+							ClientSecret: "client-secret",
+							Issuer:       "https://u:issuer-pass@idp.example.com",
+							TokenURL:     "https://idp.example.com/token?client_secret=cs-in-query",
+						},
+					},
+				},
+			}
+			conf.Cluster = &config.ClusterConfig{
+				Members: []string{"127.0.0.1:9000", "127.0.0.1:9001"},
+				HashKey: "loremipsumdolors",
+			}
+
+			enabled := true
+			proxy := "http://proxy-user:proxy-pass@proxy.example.com:3128" //nolint:gosec // test fixture
+			conf.Extensions = &extconf.ExtensionConfig{
+				Sync: &syncconf.Config{
+					Enable: &enabled,
+					Registries: []syncconf.RegistryConfig{{
+						URLs: []string{"https://sync-user:sync-pass@upstream.example.com", "https://docker.io"},
+						Oauth2CredentialHelper: map[string]any{ //nolint:gosec // test fixture
+							"tokenURL": "https://u:tokenurl-pass@idp.example.com/oauth2/token",
+						},
+					}},
+				},
+				Events: &eventsconf.Config{
+					Enable: &enabled,
+					Sinks: []eventsconf.SinkConfig{{ //nolint:gosec // test fixture
+						Type:    eventsconf.NATS,
+						Address: "nats://nats-user:nats-pass@nats.example.com:4222",
+						Proxy:   &proxy,
+					}},
+				},
+			}
+
+			sanitized := conf.Sanitize()
+
+			So(sanitized.Storage.StorageDriver["connectionstring"], ShouldEqual, "******")
+			So(sanitized.Storage.StorageDriver["serviceurl"], ShouldEqual,
+				"https://acct.blob.core.windows.net/?sv=2022-11-02&sig=******&sp=rl")
+			So(sanitized.Storage.StorageDriver["regionendpoint"], ShouldEqual,
+				"https://s3user:******@minio.example.com:9000")
+			So(sanitized.Storage.StorageDriver["endpoints"], ShouldResemble,
+				[]any{"https://******@mirror.example.com"})
+			So(sanitized.Storage.StorageDriver["plainurl"], ShouldEqual,
+				"https://minio.example.com:9000/path?region=us-east-1")
+			So(sanitized.Storage.CacheDriver["url"], ShouldEqual, "redis://user:******@redis.example.com:6379")
+			So(sanitized.Storage.SubPaths["/a"].CacheDriver["url"], ShouldEqual, "redis://:******@redis.example.com")
+			So(sanitized.HTTP.ExternalURL, ShouldEqual, "https://zot.example.com")
+			So(sanitized.HTTP.Auth.SessionDriver["url"], ShouldEqual,
+				"rediss://user:******@redis.example.com:6380")
+			So(sanitized.HTTP.Auth.SessionDriver["backup"], ShouldEqual, "redis://******@redis.example.com")
+			So(sanitized.HTTP.Auth.Bearer.Realm, ShouldEqual, "https://realm-user:******@auth.example.com/token")
+			So(sanitized.HTTP.Auth.Bearer.UpstreamTokenEndpoint.Realm, ShouldEqual,
+				"https://auth.example.com/token?access_token=******")
+			So(sanitized.HTTP.Auth.Bearer.OIDC[0].Issuer, ShouldEqual, "https://u:******@issuer.example.com")
+			So(sanitized.HTTP.Auth.OpenID.Providers["oidc"].Issuer, ShouldEqual, "https://u:******@idp.example.com")
+			So(sanitized.HTTP.Auth.OpenID.Providers["oidc"].TokenURL, ShouldEqual,
+				"https://idp.example.com/token?client_secret=******")
+			So(sanitized.Cluster.HashKey, ShouldEqual, "******")
+			So(sanitized.Cluster.Members, ShouldResemble, conf.Cluster.Members)
+
+			registry := sanitized.Extensions.Sync.Registries[0]
+			So(registry.URLs, ShouldResemble,
+				[]string{"https://sync-user:******@upstream.example.com", "https://docker.io"})
+			So(registry.Oauth2CredentialHelper["tokenURL"], ShouldEqual,
+				"https://u:******@idp.example.com/oauth2/token")
+
+			sink := sanitized.Extensions.Events.Sinks[0]
+			So(sink.Address, ShouldEqual, "nats://nats-user:******@nats.example.com:4222")
+			So(*sink.Proxy, ShouldEqual, "http://proxy-user:******@proxy.example.com:3128")
+
+			// no secret survives anywhere in the serialized config
+			buf, err := json.Marshal(sanitized)
+			So(err, ShouldBeNil)
+
+			for _, secret := range []string{
+				"azure-key", "sas-sig", "s3-pass", "token-only", "redis-pass", "sub-pass", "session-pass",
+				"pa/ss", "realm-pass", "upstream-tok", "oidc-pass", "issuer-pass", "cs-in-query",
+				"loremipsumdolors", "sync-pass", "tokenurl-pass", "nats-pass", "proxy-pass",
+			} {
+				So(string(buf), ShouldNotContainSubstring, secret)
+			}
+
+			// the original config is untouched
+			So(conf.Storage.CacheDriver["url"], ShouldEqual, "redis://user:redis-pass@redis.example.com:6379")
+			So(conf.Cluster.HashKey, ShouldEqual, "loremipsumdolors")
+			So(conf.Extensions.Sync.Registries[0].URLs[0], ShouldEqual, "https://sync-user:sync-pass@upstream.example.com")
+			So(*conf.Extensions.Events.Sinks[0].Proxy, ShouldEqual, proxy)
+		})
+
+		Convey("RedactSecretsInValue leaves non-secret values alone", func() {
+			for _, value := range []string{
+				"", "s3", "us-east-1", "/var/lib/zot", "127.0.0.1:6379",
+				"https://example.com/path?x=1&y=2", "ghcr.io/project-zot/zot@sha256:abc",
+				"a=b;c=d",
+			} {
+				So(config.RedactSecretsInValue(value), ShouldEqual, value)
+			}
+
+			So(config.RedactSecretsInValue("AccountName=a;AccountKey=k;EndpointSuffix=core.windows.net"),
+				ShouldEqual, "AccountName=a;AccountKey=******;EndpointSuffix=core.windows.net")
+			So(config.RedactSecretsInValue("BlobEndpoint=https://a.blob.core.windows.net/?sig=s;AccountName=a"),
+				ShouldEqual, "BlobEndpoint=https://a.blob.core.windows.net/?sig=******;AccountName=a")
+		})
+
 		Convey("Test Sanitize() with Event sink headers", func() {
 			conf := config.New()
 			So(conf, ShouldNotBeNil)
