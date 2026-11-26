@@ -72,7 +72,10 @@ func ClusterProxy(ctrlr *Controller) func(http.HandlerFunc) http.HandlerFunc {
 			proxyResponse, err := proxyHTTPRequest(request.Context(), request, targetMember, ctrlr)
 			if err != nil {
 				logger.Error().Err(err).Str(constants.RepositoryLogKey, name).Msg("failed to proxy the request")
-				http.Error(response, err.Error(), http.StatusInternalServerError)
+				// do not echo err to the client: it can carry another member's address
+				// (from http.Client.Do) or local TLS file paths (from CreateHTTPClient),
+				// and OPTIONS reaches here without authn/authz.
+				http.Error(response, "failed to proxy the request", http.StatusInternalServerError)
 
 				return
 			}

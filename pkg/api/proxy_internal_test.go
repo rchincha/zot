@@ -3,6 +3,7 @@ package api
 import (
 	"context"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -153,5 +154,55 @@ func TestProxyHTTPRequestPreservesExplicitEmptyBody(t *testing.T) {
 		So(backendReq.ContentLength, ShouldEqual, 0)
 		So(backendReq.Body, ShouldEqual, http.NoBody)
 		So(backendReq.TransferEncoding, ShouldBeEmpty)
+	})
+}
+
+func TestClusterProxyErrorDoesNotLeakMemberAddress(t *testing.T) {
+	Convey("ClusterProxy does not return the proxy error text to the client", t, func() {
+		// reserve a port and release it so the target member refuses connections
+		listener, err := net.Listen("tcp", "127.0.0.1:0")
+		So(err, ShouldBeNil)
+		deadMember := listener.Addr().String()
+		So(listener.Close(), ShouldBeNil)
+
+		conf := config.New()
+		conf.Cluster = &config.ClusterConfig{
+			Members: []string{"127.0.0.1:9000", deadMember},
+			HashKey: "loremipsumdolors",
+			Proxy: &config.ClusterRequestProxyConfig{
+				LocalMemberClusterSocketIndex: 0,
+			},
+		}
+
+		name := ""
+		for _, candidate := range []string{"a", "b", "c", "d", "e", "f", "g", "h"} {
+			targetMemberIndex, _ := cluster.ComputeTargetMember(conf.Cluster.HashKey, conf.Cluster.Members, candidate)
+			if targetMemberIndex != conf.Cluster.Proxy.LocalMemberClusterSocketIndex {
+				name = candidate
+
+				break
+			}
+		}
+		So(name, ShouldNotBeEmpty)
+
+		handlerCalled := false
+		ctrlr := &Controller{Config: conf, Log: zlog.NewTestLogger()}
+		handler := ClusterProxy(ctrlr)(func(response http.ResponseWriter, request *http.Request) {
+			handlerCalled = true
+			response.WriteHeader(http.StatusOK)
+		})
+
+		for _, method := range []string{http.MethodOptions, http.MethodGet} {
+			request := httptest.NewRequestWithContext(context.Background(), method, "/v2/"+name+"/tags/list", nil)
+			request = mux.SetURLVars(request, map[string]string{"name": name})
+			response := httptest.NewRecorder()
+
+			handler(response, request)
+
+			So(response.Code, ShouldEqual, http.StatusInternalServerError)
+			So(strings.TrimSpace(response.Body.String()), ShouldEqual, "failed to proxy the request")
+			So(response.Body.String(), ShouldNotContainSubstring, deadMember)
+			So(handlerCalled, ShouldBeFalse)
+		}
 	})
 }
